@@ -26,7 +26,10 @@ import {
 } from "./_helpers.js";
 
 const cardId = z.number().int().positive().describe("Pipeline card ID");
-const stageId = z.number().int().positive().describe("Pipeline stage ID");
+// Stage IDs are strings in Chatwoot — server normalizes to "{pipeline_id}_{slug}"
+// after save (e.g. "3321_qualificado"). Was incorrectly typed as z.number()
+// before — broke list_cards/move_to_stage with "Invalid arguments" 422.
+const stageId = z.string().min(1).describe('Pipeline stage ID (e.g. "3321_qualificado")');
 const pipelineIdInput = z.number().int().positive().describe("Pipeline ID");
 
 const dealQualification = z
@@ -113,7 +116,10 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineIdInput,
-        pipeline_stage_id: stageId,
+        // Backend column is `pipeline_stage` (string id like '3321_qualificado').
+        // Was incorrectly named `pipeline_stage_id` here — backend silently
+        // dropped it via strong_params and validation failed with 422.
+        pipeline_stage: stageId,
         title: z.string().min(1).describe("Card title (e.g., the deal name)"),
         contact_id: z.number().int().positive().optional(),
         contact_attributes: z

@@ -26,7 +26,6 @@
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
-  accountId,
   customAttributes,
   optionalAccountId,
   pagination,
@@ -157,7 +156,8 @@ export const register: RegisterFn = (server, client) => {
       title: "Delete company",
       description:
         "Delete a company. Linked contacts are unlinked but preserved. Returns 204 on success, 422 if the service refuses (e.g., in-use).",
-      inputSchema: { account_id: accountId, company_id: companyId },
+      // accountId is optional — falls back to NOOVICHAT_ACCOUNT_ID env var, like every other tool
+      inputSchema: { account_id: optionalAccountId, company_id: companyId },
       annotations: { destructiveHint: true },
     },
     async ({ account_id, company_id }) =>

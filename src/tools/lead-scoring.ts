@@ -98,6 +98,18 @@ export const register: RegisterFn = (server, client) => {
           .string()
           .optional()
           .describe("Rule category (e.g., demographic, behavioral, engagement)"),
+        // event_type is REQUIRED by the backend (validated by LeadScoreRule#event_type
+        // inclusion in the allowed-events list). Was missing here — calls returned
+        // 422 "Event type can't be blank, Event type is not included in the list".
+        event_type: z
+          .string()
+          .min(1)
+          .describe(
+            "Backend event that triggers the rule. Allowed values include " +
+              "'message_sent', 'message_received', 'conversation_resolved', " +
+              "'contact_created', 'card_created', 'card_moved', etc. " +
+              "Check the LeadScoreRule model for the full enum.",
+          ),
         score: z
           .number()
           .int()
