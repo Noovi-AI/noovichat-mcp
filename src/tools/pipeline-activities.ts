@@ -22,11 +22,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  agentUserId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  agentUserId,
 } from "./_helpers.js";
 
 const activityId = z.number().int().positive().describe("Pipeline activity ID");
@@ -48,8 +48,7 @@ export const register: RegisterFn = (server, client) => {
     "list_pipeline_activities",
     {
       title: "List pipeline activities",
-      description:
-        "List activities filtered by card, status, owner or scheduled date range.",
+      description: "List activities filtered by card, status, owner or scheduled date range.",
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardIdInput.optional(),
@@ -132,10 +131,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, activity_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`, body);
       }),
   );
 
@@ -165,9 +161,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, activity_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/pipeline/activities/${activity_id}/start`,
-        );
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}/start`);
       }),
   );
 
@@ -301,10 +295,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(
-          `/api/v1/accounts/${acc}/pipeline/activities/bulk_create`,
-          body,
-        );
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activities/bulk_create`, body);
       }),
   );
 
@@ -362,9 +353,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, sequence_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`);
       }),
   );
 
@@ -419,16 +408,15 @@ export const register: RegisterFn = (server, client) => {
     "delete_activity_sequence",
     {
       title: "Delete activity sequence",
-      description: "Delete an activity sequence. Existing activities created from it are preserved.",
+      description:
+        "Delete an activity sequence. Existing activities created from it are preserved.",
       inputSchema: { account_id: accountId, sequence_id: sequenceId },
       annotations: { destructiveHint: true },
     },
     async ({ account_id, sequence_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(
-          `/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`,
-        );
+        return client.delete(`/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`);
       }),
   );
 
@@ -516,9 +504,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, template_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`);
       }),
   );
 
@@ -587,9 +573,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, template_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(
-          `/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`,
-        );
+        return client.delete(`/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`);
       }),
   );
 

@@ -22,12 +22,7 @@
 
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
-import {
-  accountId,
-  optionalAccountId,
-  resolveAccountId,
-  safeHandler,
-} from "./_helpers.js";
+import { accountId, optionalAccountId, resolveAccountId, safeHandler } from "./_helpers.js";
 
 const syncEntityType = z
   .enum(["appointment", "pipeline_card"])
@@ -45,14 +40,22 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         entity_type: syncEntityType,
-        appointment_id: z.number().int().positive().optional().describe("Required when entity_type=appointment"),
+        appointment_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Required when entity_type=appointment"),
         pipeline_card_id: z
           .number()
           .int()
           .positive()
           .optional()
           .describe("Required when entity_type=pipeline_card (card must have scheduled_at)"),
-        calendar_id: z.string().optional().describe("Target Google calendar ID (defaults to primary)"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Target Google calendar ID (defaults to primary)"),
       },
     },
     async ({ account_id, ...body }) =>
@@ -70,7 +73,10 @@ export const register: RegisterFn = (server, client) => {
         "Pull events from a Google calendar and reconcile them into NooviChat appointments. Useful to surface external bookings inside NooviChat.",
       inputSchema: {
         account_id: optionalAccountId,
-        calendar_id: z.string().optional().describe("Source Google calendar ID (defaults to primary)"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Source Google calendar ID (defaults to primary)"),
         from: z.string().optional().describe("ISO8601 lower bound for events to import"),
         to: z.string().optional().describe("ISO8601 upper bound for events to import"),
       },
@@ -91,7 +97,10 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: accountId,
         external_event_id: externalEventId,
-        calendar_id: z.string().optional().describe("Calendar holding the event (defaults to primary)"),
+        calendar_id: z
+          .string()
+          .optional()
+          .describe("Calendar holding the event (defaults to primary)"),
       },
       annotations: { destructiveHint: true },
     },

@@ -21,12 +21,7 @@
 
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
-import {
-  optionalAccountId,
-  resolveAccountId,
-  safeHandler,
-  inboxId,
-} from "./_helpers.js";
+import { inboxId, optionalAccountId, resolveAccountId, safeHandler } from "./_helpers.js";
 
 export const register: RegisterFn = (server, client) => {
   server.registerTool(
@@ -132,19 +127,15 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         inbox_id: inboxId,
-        phone_number: z
-          .string()
-          .min(1)
-          .describe("Phone number to receive the pairing code"),
+        phone_number: z.string().min(1).describe("Phone number to receive the pairing code"),
       },
     },
     async ({ account_id, inbox_id, phone_number }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/uazapi/${inbox_id}/request_pairing_code`,
-          { phone_number },
-        );
+        return client.post(`/api/v1/accounts/${acc}/uazapi/${inbox_id}/request_pairing_code`, {
+          phone_number,
+        });
       }),
   );
 
@@ -159,9 +150,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, inbox_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/uazapi/${inbox_id}/reconfigure_chatwoot`,
-        );
+        return client.post(`/api/v1/accounts/${acc}/uazapi/${inbox_id}/reconfigure_chatwoot`);
       }),
   );
 };

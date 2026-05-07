@@ -79,47 +79,40 @@ export const register: RegisterFn = (server, client) => {
     "get_whitelabel_credentials_status",
     {
       title: "Get whitelabel credentials status",
-      description:
-        `Return active AI provider, configured model and whether a key is set. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Return active AI provider, configured model and whether a key is set. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () =>
-      safeHandler(() => client.get("/super_admin/whitelabel/credentials_status")),
+    async () => safeHandler(() => client.get("/super_admin/whitelabel/credentials_status")),
   );
 
   server.registerTool(
     "list_whitelabel_credentials",
     {
       title: "List all stored whitelabel AI credentials",
-      description:
-        `List every stored provider credential (active + inactive). ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `List every stored provider credential (active + inactive). ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () =>
-      safeHandler(() => client.get("/super_admin/whitelabel/all_credentials")),
+    async () => safeHandler(() => client.get("/super_admin/whitelabel/all_credentials")),
   );
 
   server.registerTool(
     "list_whitelabel_backups",
     {
       title: "List script backups",
-      description:
-        `List timestamped backups of the dashboard custom-scripts config. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `List timestamped backups of the dashboard custom-scripts config. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () =>
-      safeHandler(() => client.get("/super_admin/whitelabel/backups")),
+    async () => safeHandler(() => client.get("/super_admin/whitelabel/backups")),
   );
 
   server.registerTool(
     "diff_whitelabel_backup",
     {
       title: "Diff a backup against current scripts",
-      description:
-        `Return the diff between a stored backup and the currently active scripts. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Return the diff between a stored backup and the currently active scripts. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         timestamp: z
           .string()
@@ -129,30 +122,25 @@ export const register: RegisterFn = (server, client) => {
       annotations: { readOnlyHint: true },
     },
     async ({ timestamp }) =>
-      safeHandler(() =>
-        client.get("/super_admin/whitelabel/diff_backup", { timestamp }),
-      ),
+      safeHandler(() => client.get("/super_admin/whitelabel/diff_backup", { timestamp })),
   );
 
   server.registerTool(
     "list_whitelabel_audit_logs",
     {
       title: "List whitelabel audit logs",
-      description:
-        `Return the most recent 50 audit log entries (script edits, branding changes, credential rotations). ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Return the most recent 50 audit log entries (script edits, branding changes, credential rotations). ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },
-    async () =>
-      safeHandler(() => client.get("/super_admin/whitelabel/audit_logs")),
+    async () => safeHandler(() => client.get("/super_admin/whitelabel/audit_logs")),
   );
 
   server.registerTool(
     "get_whitelabel_email_template",
     {
       title: "Get whitelabel email template",
-      description:
-        `Load a single email template by name (and optional locale). ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Load a single email template by name (and optional locale). ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         name: z.string().min(1).describe("Template name (e.g. 'agent_invite', 'password_reset')"),
         locale: z.string().optional().describe("Locale code (e.g. 'en', 'pt_BR')"),
@@ -168,8 +156,7 @@ export const register: RegisterFn = (server, client) => {
     "test_whitelabel_ai_connection",
     {
       title: "Test AI provider connection",
-      description:
-        `Validate an AI provider API key by issuing a probe request. Auto-detects provider from key shape. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Validate an AI provider API key by issuing a probe request. Auto-detects provider from key shape. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         api_key: z.string().min(1).describe("Provider API key (OpenAI, Anthropic, etc.)"),
         model: z.string().optional().describe("Model identifier to probe with"),
@@ -183,8 +170,7 @@ export const register: RegisterFn = (server, client) => {
     "update_whitelabel_ai_config",
     {
       title: "Update active AI provider config",
-      description:
-        `Persist (or update) the whitelabel AI provider key + model used by Captain AI hooks and the script chat agent. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Persist (or update) the whitelabel AI provider key + model used by Captain AI hooks and the script chat agent. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         api_key: z.string().min(1),
         model: z.string().min(1).describe("Model identifier (e.g. 'gpt-4o', 'claude-sonnet-4')"),
@@ -198,51 +184,38 @@ export const register: RegisterFn = (server, client) => {
     "activate_whitelabel_credential",
     {
       title: "Activate a stored AI credential",
-      description:
-        `Switch the active AI provider to a previously stored credential. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Switch the active AI provider to a previously stored credential. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
-        provider: z
-          .string()
-          .min(1)
-          .describe("Provider key (e.g. 'openai', 'anthropic', 'google')"),
+        provider: z.string().min(1).describe("Provider key (e.g. 'openai', 'anthropic', 'google')"),
       },
     },
     async (body) =>
-      safeHandler(() =>
-        client.post("/super_admin/whitelabel/activate_credential", body),
-      ),
+      safeHandler(() => client.post("/super_admin/whitelabel/activate_credential", body)),
   );
 
   server.registerTool(
     "delete_whitelabel_credential",
     {
       title: "Delete a stored AI credential",
-      description:
-        `Remove a stored provider credential. Cannot delete the currently active one — activate another first. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Remove a stored provider credential. Cannot delete the currently active one — activate another first. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         provider: z.string().min(1),
       },
       annotations: { destructiveHint: true },
     },
     async ({ provider }) =>
-      safeHandler(() =>
-        client.delete("/super_admin/whitelabel/delete_credential", { provider }),
-      ),
+      safeHandler(() => client.delete("/super_admin/whitelabel/delete_credential", { provider })),
   );
 
   server.registerTool(
     "migrate_whitelabel_credentials",
     {
       title: "Migrate legacy credentials to new schema",
-      description:
-        `One-shot migration of credentials stored in the legacy InstallationConfig keys into the new WhitelabelCredential model. Idempotent. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `One-shot migration of credentials stored in the legacy InstallationConfig keys into the new WhitelabelCredential model. Idempotent. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {},
       annotations: { idempotentHint: true },
     },
-    async () =>
-      safeHandler(() =>
-        client.post("/super_admin/whitelabel/migrate_credentials"),
-      ),
+    async () => safeHandler(() => client.post("/super_admin/whitelabel/migrate_credentials")),
   );
 
   // ── Custom scripts (chat-AI assisted) ─────────────────────────────────────
@@ -250,27 +223,19 @@ export const register: RegisterFn = (server, client) => {
     "analyze_whitelabel_script",
     {
       title: "Run AI security audit on a custom dashboard script",
-      description:
-        `Submit a JS snippet that would run in the dashboard and receive a structured security/UX/performance audit. Cached 1h by SHA256 of the content. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Submit a JS snippet that would run in the dashboard and receive a structured security/UX/performance audit. Cached 1h by SHA256 of the content. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
-        script_content: z
-          .string()
-          .min(1)
-          .describe("Raw JavaScript source to be analyzed"),
+        script_content: z.string().min(1).describe("Raw JavaScript source to be analyzed"),
       },
     },
-    async (body) =>
-      safeHandler(() =>
-        client.post("/super_admin/whitelabel/analyze_script", body),
-      ),
+    async (body) => safeHandler(() => client.post("/super_admin/whitelabel/analyze_script", body)),
   );
 
   server.registerTool(
     "whitelabel_script_chat",
     {
       title: "Send a message to the script-authoring AI agent",
-      description:
-        `Conversational AI flow that helps draft/refine custom dashboard scripts. Maintains a per-super_admin conversation thread. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Conversational AI flow that helps draft/refine custom dashboard scripts. Maintains a per-super_admin conversation thread. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         message: z.string().min(1).describe("User message to the agent"),
         context: z
@@ -279,8 +244,7 @@ export const register: RegisterFn = (server, client) => {
           .describe("Free-form context object (current script, selection, intent)"),
       },
     },
-    async (body) =>
-      safeHandler(() => client.post("/super_admin/whitelabel/chat", body)),
+    async (body) => safeHandler(() => client.post("/super_admin/whitelabel/chat", body)),
   );
 
   // ── Branding (logo) ───────────────────────────────────────────────────────
@@ -288,20 +252,14 @@ export const register: RegisterFn = (server, client) => {
     "delete_whitelabel_logo",
     {
       title: "Delete a whitelabel logo asset",
-      description:
-        `Remove a stored branding asset by type (e.g. 'logo', 'logo_dark', 'favicon'). ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Remove a stored branding asset by type (e.g. 'logo', 'logo_dark', 'favicon'). ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
-        type: z
-          .string()
-          .min(1)
-          .describe("Logo asset type — 'logo', 'logo_dark', 'favicon', etc."),
+        type: z.string().min(1).describe("Logo asset type — 'logo', 'logo_dark', 'favicon', etc."),
       },
       annotations: { destructiveHint: true },
     },
     async ({ type }) =>
-      safeHandler(() =>
-        client.delete("/super_admin/whitelabel/delete_logo", { type }),
-      ),
+      safeHandler(() => client.delete("/super_admin/whitelabel/delete_logo", { type })),
   );
 
   // upload_whitelabel_logo intentionally omitted: the controller requires a
@@ -316,8 +274,7 @@ export const register: RegisterFn = (server, client) => {
     "save_whitelabel_email_template",
     {
       title: "Save (create/update) a whitelabel email template",
-      description:
-        `Persist a custom HTML/text body for a named transactional email template. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Persist a custom HTML/text body for a named transactional email template. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         name: z.string().min(1),
         body: z.string().min(1).describe("Template body (Liquid/HTML)"),
@@ -325,24 +282,20 @@ export const register: RegisterFn = (server, client) => {
       },
       annotations: { idempotentHint: true },
     },
-    async (body) =>
-      safeHandler(() => client.post("/super_admin/whitelabel/email_template", body)),
+    async (body) => safeHandler(() => client.post("/super_admin/whitelabel/email_template", body)),
   );
 
   server.registerTool(
     "delete_whitelabel_email_template",
     {
       title: "Reset a whitelabel email template to default",
-      description:
-        `Delete the custom override for a named template, falling back to the built-in default. ${SUPER_ADMIN_AUTH_NOTE}`,
+      description: `Delete the custom override for a named template, falling back to the built-in default. ${SUPER_ADMIN_AUTH_NOTE}`,
       inputSchema: {
         name: z.string().min(1),
       },
       annotations: { destructiveHint: true },
     },
     async ({ name }) =>
-      safeHandler(() =>
-        client.delete("/super_admin/whitelabel/email_template", { name }),
-      ),
+      safeHandler(() => client.delete("/super_admin/whitelabel/email_template", { name })),
   );
 };

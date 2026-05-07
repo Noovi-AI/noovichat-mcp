@@ -90,11 +90,13 @@ export class NooviChatClient {
     const url = this.buildUrl(path, params);
 
     const headers = new Headers({
-      "api_access_token": this.apiToken,
-      "Accept": "application/json",
+      api_access_token: this.apiToken,
+      Accept: "application/json",
     });
 
-    let payload: BodyInit | undefined;
+    // Use string for the body; this matches the canonical Node 20+ fetch
+    // signature (RequestInit.body accepts string | undefined among other types).
+    let payload: string | undefined;
     if (body !== undefined) {
       headers.set("Content-Type", "application/json");
       payload = JSON.stringify(body);

@@ -40,10 +40,7 @@ export const agentUserId = z.number().int().positive().describe("Agent (User) ID
 
 export const teamId = z.number().int().positive().describe("Team ID");
 
-export const labelSlug = z
-  .string()
-  .min(1)
-  .describe("Label slug (lowercase string identifier)");
+export const labelSlug = z.string().min(1).describe("Label slug (lowercase string identifier)");
 
 export const customAttributes = z
   .record(z.string(), z.unknown())
@@ -135,7 +132,5 @@ export function resolveAccountId(explicit?: number): number {
     const parsed = Number.parseInt(env, 10);
     if (Number.isInteger(parsed) && parsed > 0) return parsed;
   }
-  throw new Error(
-    "account_id is required: pass it explicitly or set NOOVICHAT_ACCOUNT_ID env var",
-  );
+  throw new Error("account_id is required: pass it explicitly or set NOOVICHAT_ACCOUNT_ID env var");
 }

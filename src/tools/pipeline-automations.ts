@@ -34,9 +34,9 @@ import type { RegisterFn } from "../types.js";
 import {
   accountId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
 } from "./_helpers.js";
 
 const automationId = z.number().int().positive().describe("Pipeline automation ID");
@@ -130,10 +130,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, automation_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/pipeline/automations/${automation_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/automations/${automation_id}`, body);
       }),
   );
 
@@ -141,7 +138,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_pipeline_automation",
     {
       title: "Delete pipeline automation",
-      description: "Delete an automation. Past executions and audit logs are retained for traceability.",
+      description:
+        "Delete an automation. Past executions and audit logs are retained for traceability.",
       inputSchema: { account_id: accountId, automation_id: automationId },
       annotations: { destructiveHint: true },
     },
@@ -207,7 +205,8 @@ export const register: RegisterFn = (server, client) => {
     "validate_automation",
     {
       title: "Validate pipeline automation",
-      description: "Validate the flow of an existing automation (cycles, missing references, malformed nodes).",
+      description:
+        "Validate the flow of an existing automation (cycles, missing references, malformed nodes).",
       inputSchema: { account_id: optionalAccountId, automation_id: automationId },
       annotations: { readOnlyHint: true },
     },
@@ -267,16 +266,15 @@ export const register: RegisterFn = (server, client) => {
     "export_automation",
     {
       title: "Export pipeline automation",
-      description: "Export an automation as a portable JSON payload (re-importable via import_automations).",
+      description:
+        "Export an automation as a portable JSON payload (re-importable via import_automations).",
       inputSchema: { account_id: optionalAccountId, automation_id: automationId },
       annotations: { readOnlyHint: true },
     },
     async ({ account_id, automation_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/automations/${automation_id}/export`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automations/${automation_id}/export`);
       }),
   );
 
@@ -290,7 +288,10 @@ export const register: RegisterFn = (server, client) => {
         payload: z
           .record(z.string(), z.unknown())
           .describe("Exported automation JSON (single object or array under `automations`)"),
-        overwrite: z.boolean().optional().describe("Overwrite existing automations with the same name"),
+        overwrite: z
+          .boolean()
+          .optional()
+          .describe("Overwrite existing automations with the same name"),
       },
     },
     async ({ account_id, ...body }) =>
@@ -344,10 +345,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/automations/all_executions`,
-          params,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automations/all_executions`, params);
       }),
   );
 
@@ -356,7 +354,8 @@ export const register: RegisterFn = (server, client) => {
     "get_automation_audit_logs",
     {
       title: "Get audit logs of one automation",
-      description: "Audit trail for a single automation (configuration changes, manual runs, toggles).",
+      description:
+        "Audit trail for a single automation (configuration changes, manual runs, toggles).",
       inputSchema: {
         account_id: optionalAccountId,
         automation_id: automationId,
@@ -392,10 +391,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/automations/all_audit_logs`,
-          params,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automations/all_audit_logs`, params);
       }),
   );
 
@@ -404,7 +400,8 @@ export const register: RegisterFn = (server, client) => {
     "get_automation_stats",
     {
       title: "Get automation stats",
-      description: "Aggregated execution stats for an automation (counts, success rate, avg duration).",
+      description:
+        "Aggregated execution stats for an automation (counts, success rate, avg duration).",
       inputSchema: {
         account_id: optionalAccountId,
         automation_id: automationId,
@@ -459,7 +456,8 @@ export const register: RegisterFn = (server, client) => {
     "get_automations_dashboard",
     {
       title: "Get automations dashboard",
-      description: "Consolidated dashboard: total automations, executions, success rate, top errors.",
+      description:
+        "Consolidated dashboard: total automations, executions, success rate, top errors.",
       inputSchema: {
         account_id: optionalAccountId,
         from: z.string().optional(),
@@ -505,9 +503,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, template_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/automation_templates/${template_id}`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automation_templates/${template_id}`);
       }),
   );
 
@@ -522,9 +518,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/automation_templates/categories`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automation_templates/categories`);
       }),
   );
 
@@ -532,7 +526,8 @@ export const register: RegisterFn = (server, client) => {
     "use_automation_template",
     {
       title: "Use automation template",
-      description: "Instantiate an automation from a template. Returns the newly created automation.",
+      description:
+        "Instantiate an automation from a template. Returns the newly created automation.",
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,

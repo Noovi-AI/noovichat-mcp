@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { jsonText, resolveAccountId, safeHandler } from "../src/tools/_helpers.js";
 import { NooviChatApiError } from "../src/client.js";
+import { jsonText, resolveAccountId, safeHandler } from "../src/tools/_helpers.js";
 
 describe("resolveAccountId", () => {
   const original = process.env.NOOVICHAT_ACCOUNT_ID;
 
   afterEach(() => {
     if (original === undefined) {
+      // biome-ignore lint/performance/noDelete: actual env unset is required (string "undefined" would not satisfy the test)
       delete process.env.NOOVICHAT_ACCOUNT_ID;
     } else {
       process.env.NOOVICHAT_ACCOUNT_ID = original;
@@ -24,6 +25,7 @@ describe("resolveAccountId", () => {
   });
 
   it("throws when neither is set", () => {
+    // biome-ignore lint/performance/noDelete: actual env unset required
     delete process.env.NOOVICHAT_ACCOUNT_ID;
     expect(() => resolveAccountId(undefined)).toThrow(/account_id/);
   });
@@ -50,7 +52,7 @@ describe("jsonText", () => {
 
   it("handles null and primitive values", () => {
     expect(jsonText(null).content[0]?.text).toBe("null");
-    expect(jsonText("hello").content[0]?.text).toBe("\"hello\"");
+    expect(jsonText("hello").content[0]?.text).toBe('"hello"');
     expect(jsonText(42).content[0]?.text).toBe("42");
   });
 });

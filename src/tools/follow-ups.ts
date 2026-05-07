@@ -25,11 +25,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  conversationDisplayId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  conversationDisplayId,
 } from "./_helpers.js";
 
 const followUpId = z.number().int().positive().describe("Follow-up ID");
@@ -292,10 +292,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, template_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}`, body);
       }),
   );
 
@@ -373,9 +370,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, template_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`,
-        );
+        return client.get(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`);
       }),
   );
 
@@ -458,7 +453,8 @@ export const register: RegisterFn = (server, client) => {
     "list_followup_automations",
     {
       title: "List follow-up automations",
-      description: "List automations that trigger follow-ups based on conversation/pipeline events.",
+      description:
+        "List automations that trigger follow-ups based on conversation/pipeline events.",
       inputSchema: {
         account_id: optionalAccountId,
         enabled: z.boolean().optional(),
@@ -533,10 +529,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, automation_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`, body);
       }),
   );
 

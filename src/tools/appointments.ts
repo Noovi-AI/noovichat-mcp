@@ -28,11 +28,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  contactId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  contactId,
 } from "./_helpers.js";
 
 const appointmentId = z.number().int().positive().describe("Appointment ID");
@@ -211,9 +211,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/appointments/${appointment_id}/sync_to_google`,
-        );
+        return client.post(`/api/v1/accounts/${acc}/appointments/${appointment_id}/sync_to_google`);
       }),
   );
 
@@ -244,8 +242,7 @@ export const register: RegisterFn = (server, client) => {
     "export_appointments_csv",
     {
       title: "Export appointments as CSV",
-      description:
-        "Export appointments matching the filter as CSV (GET /appointments/export.csv).",
+      description: "Export appointments matching the filter as CSV (GET /appointments/export.csv).",
       inputSchema: {
         account_id: optionalAccountId,
         status: appointmentStatus.optional(),
@@ -438,7 +435,8 @@ export const register: RegisterFn = (server, client) => {
     "create_professional",
     {
       title: "Create professional",
-      description: "Register a new professional (associated with an agent user, partner, services).",
+      description:
+        "Register a new professional (associated with an agent user, partner, services).",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
@@ -489,8 +487,7 @@ export const register: RegisterFn = (server, client) => {
     "delete_professional",
     {
       title: "Delete professional",
-      description:
-        "Delete a professional. Existing appointments referencing them are not removed.",
+      description: "Delete a professional. Existing appointments referencing them are not removed.",
       inputSchema: { account_id: accountId, professional_id: professionalId },
       annotations: { destructiveHint: true },
     },
@@ -505,8 +502,7 @@ export const register: RegisterFn = (server, client) => {
     "get_professional_availability",
     {
       title: "Get professional availability",
-      description:
-        "Get a professional's available time slots within a date window.",
+      description: "Get a professional's available time slots within a date window.",
       inputSchema: {
         account_id: optionalAccountId,
         professional_id: professionalId,

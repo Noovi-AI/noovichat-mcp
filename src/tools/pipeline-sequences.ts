@@ -27,9 +27,9 @@ import type { RegisterFn } from "../types.js";
 import {
   accountId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
 } from "./_helpers.js";
 
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
@@ -62,10 +62,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`,
-          params,
-        );
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, params);
       }),
   );
 
@@ -87,10 +84,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`,
-          body,
-        );
+        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, body);
       }),
   );
 

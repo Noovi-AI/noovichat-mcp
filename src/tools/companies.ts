@@ -27,11 +27,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  customAttributes,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  customAttributes,
 } from "./_helpers.js";
 
 const companyId = z.number().int().positive().describe("Company ID");
@@ -111,7 +111,8 @@ export const register: RegisterFn = (server, client) => {
     "create_company",
     {
       title: "Create company",
-      description: "Create a new company. Only `name` is required; remaining fields enrich the record.",
+      description:
+        "Create a new company. Only `name` is required; remaining fields enrich the record.",
       inputSchema: {
         account_id: optionalAccountId,
         ...companyAttributes,

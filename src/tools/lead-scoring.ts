@@ -35,11 +35,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  contactId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  contactId,
 } from "./_helpers.js";
 
 const ruleId = z.number().int().positive().describe("Lead score rule ID");
@@ -94,8 +94,14 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         name: z.string().min(1).describe("Rule name"),
         description: z.string().optional(),
-        category: z.string().optional().describe("Rule category (e.g., demographic, behavioral, engagement)"),
-        score: z.number().int().describe("Score delta applied when conditions match (can be negative)"),
+        category: z
+          .string()
+          .optional()
+          .describe("Rule category (e.g., demographic, behavioral, engagement)"),
+        score: z
+          .number()
+          .int()
+          .describe("Score delta applied when conditions match (can be negative)"),
         conditions: z
           .record(z.string(), z.unknown())
           .describe("Condition tree (operator/operands JSON)"),
@@ -192,7 +198,8 @@ export const register: RegisterFn = (server, client) => {
     "get_lead_score_log",
     {
       title: "Get lead score log entry",
-      description: "Read a single score-change event with context (matched rule, before/after values, reason).",
+      description:
+        "Read a single score-change event with context (matched rule, before/after values, reason).",
       inputSchema: { account_id: optionalAccountId, log_id: logId },
       annotations: { readOnlyHint: true },
     },
@@ -239,10 +246,14 @@ export const register: RegisterFn = (server, client) => {
     "get_lead_score_trends",
     {
       title: "Get lead score trends",
-      description: "Time series of score evolution (daily/weekly/monthly buckets) over a date range.",
+      description:
+        "Time series of score evolution (daily/weekly/monthly buckets) over a date range.",
       inputSchema: {
         account_id: optionalAccountId,
-        granularity: z.enum(["day", "week", "month"]).optional().describe("Bucket size (default day)"),
+        granularity: z
+          .enum(["day", "week", "month"])
+          .optional()
+          .describe("Bucket size (default day)"),
         ...dateRange,
       },
       annotations: { readOnlyHint: true },
@@ -261,7 +272,13 @@ export const register: RegisterFn = (server, client) => {
       description: "Ranked list of leads by current score. Useful for sales prioritization.",
       inputSchema: {
         account_id: optionalAccountId,
-        limit: z.number().int().positive().max(100).optional().describe("How many leads to return (default 10)"),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .max(100)
+          .optional()
+          .describe("How many leads to return (default 10)"),
         ...dateRange,
       },
       annotations: { readOnlyHint: true },

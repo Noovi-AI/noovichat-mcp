@@ -29,11 +29,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  inboxId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  inboxId,
 } from "./_helpers.js";
 
 const broadcastId = z.number().int().positive().describe("Broadcast ID");
@@ -73,10 +73,7 @@ const broadcastCoreFields = {
   pause_duration_seconds: z.number().int().nonnegative().optional(),
   window_start_time: z.string().optional().describe("HH:MM 24h"),
   window_end_time: z.string().optional().describe("HH:MM 24h"),
-  allowed_weekdays: z
-    .array(z.number().int().min(0).max(6))
-    .optional()
-    .describe("0=Sun .. 6=Sat"),
+  allowed_weekdays: z.array(z.number().int().min(0).max(6)).optional().describe("0=Sun .. 6=Sat"),
   message_type: z.enum(["text", "media", "template"]).optional(),
   message_payload: z
     .record(z.string(), z.unknown())
@@ -142,10 +139,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, broadcast_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/broadcasts/${broadcast_id}/contacts`,
-          params,
-        );
+        return client.get(`/api/v1/accounts/${acc}/broadcasts/${broadcast_id}/contacts`, params);
       }),
   );
 

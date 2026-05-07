@@ -29,11 +29,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  inboxId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  inboxId,
 } from "./_helpers.js";
 
 const templateId = z
@@ -41,10 +41,7 @@ const templateId = z
   .min(1)
   .describe("WhatsApp template ID (Meta-side identifier returned by Meta)");
 
-const templateLanguage = z
-  .string()
-  .min(2)
-  .describe("Template language code (e.g. pt_BR, en_US)");
+const templateLanguage = z.string().min(2).describe("Template language code (e.g. pt_BR, en_US)");
 
 const templateCategory = z
   .enum(["MARKETING", "UTILITY", "AUTHENTICATION"])

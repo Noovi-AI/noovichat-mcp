@@ -82,12 +82,7 @@ export const register: RegisterFn = (server, client) => {
               name: z.string().describe("Stage name"),
               position: z.number().int().describe("Stage order (1-indexed)"),
               color: z.string().optional().describe("Hex color code"),
-              probability: z
-                .number()
-                .min(0)
-                .max(100)
-                .optional()
-                .describe("Win probability (%)"),
+              probability: z.number().min(0).max(100).optional().describe("Win probability (%)"),
             }),
           )
           .optional()
@@ -163,10 +158,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineId,
-        stage_id: z
-          .string()
-          .min(1)
-          .describe("Stage id (e.g. '3321_qualificado')"),
+        stage_id: z.string().min(1).describe("Stage id (e.g. '3321_qualificado')"),
         fields: stageFieldsSchema.describe(
           "Fields to merge into the existing stage. Only listed fields are touched.",
         ),
@@ -176,9 +168,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, pipeline_id, stage_id, fields }) =>
       safeHandler(async () => {
         const acc = resolveAccountId(account_id);
-        const pipeline = (await client.get(
-          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}`,
-        )) as { stages?: Record<string, Record<string, unknown>> };
+        const pipeline = (await client.get(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}`)) as {
+          stages?: Record<string, Record<string, unknown>>;
+        };
         const stages = { ...(pipeline.stages ?? {}) };
         if (!stages[stage_id]) {
           throw new Error(
@@ -218,14 +210,15 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, pipeline_id, stage, temp_key }) =>
       safeHandler(async () => {
         const acc = resolveAccountId(account_id);
-        const pipeline = (await client.get(
-          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}`,
-        )) as { stages?: Record<string, Record<string, unknown>> };
+        const pipeline = (await client.get(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}`)) as {
+          stages?: Record<string, Record<string, unknown>>;
+        };
         const stages = { ...(pipeline.stages ?? {}) };
-        const placeholder =
-          temp_key ?? `tmp_${Math.random().toString(36).slice(2, 9)}`;
+        const placeholder = temp_key ?? `tmp_${Math.random().toString(36).slice(2, 9)}`;
         if (stages[placeholder]) {
-          throw new Error(`Stage placeholder "${placeholder}" already exists; choose a different temp_key`);
+          throw new Error(
+            `Stage placeholder "${placeholder}" already exists; choose a different temp_key`,
+          );
         }
         stages[placeholder] = stage;
         return client.patch(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}`, {
@@ -252,9 +245,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, pipeline_id, stage_id }) =>
       safeHandler(async () => {
         const acc = resolveAccountId(account_id);
-        const pipeline = (await client.get(
-          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}`,
-        )) as { stages?: Record<string, Record<string, unknown>> };
+        const pipeline = (await client.get(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}`)) as {
+          stages?: Record<string, Record<string, unknown>>;
+        };
         const stages = { ...(pipeline.stages ?? {}) };
         if (!stages[stage_id]) {
           throw new Error(`Stage "${stage_id}" not found in pipeline ${pipeline_id}`);
@@ -270,7 +263,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_pipeline",
     {
       title: "Delete pipeline",
-      description: "Delete a pipeline. Cards are soft-deleted (recoverable via list_discarded_cards).",
+      description:
+        "Delete a pipeline. Cards are soft-deleted (recoverable via list_discarded_cards).",
       inputSchema: { account_id: accountIdSchema, pipeline_id: pipelineId },
       annotations: { destructiveHint: true },
     },

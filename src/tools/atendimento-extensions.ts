@@ -46,10 +46,10 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  contactId,
   optionalAccountId,
   resolveAccountId,
   safeHandler,
-  contactId,
 } from "./_helpers.js";
 
 const conversationDisplayIdInput = z
@@ -235,7 +235,10 @@ export const register: RegisterFn = (server, client) => {
           .min(1)
           .describe("Consent type/scope (e.g., 'marketing_email', 'whatsapp_promo')"),
         granted: z.boolean().describe("Whether the consent is granted at creation time"),
-        source: z.string().optional().describe("How the consent was collected (form, agent, import, etc.)"),
+        source: z
+          .string()
+          .optional()
+          .describe("How the consent was collected (form, agent, import, etc.)"),
         notes: z.string().optional(),
       },
     },
@@ -250,7 +253,8 @@ export const register: RegisterFn = (server, client) => {
     "grant_contact_consent",
     {
       title: "Grant contact consent",
-      description: "Flip an existing consent record to granted=true (PATCH /consent_records/:id/grant).",
+      description:
+        "Flip an existing consent record to granted=true (PATCH /consent_records/:id/grant).",
       inputSchema: {
         account_id: optionalAccountId,
         contact_id: contactId,
@@ -273,7 +277,8 @@ export const register: RegisterFn = (server, client) => {
     "revoke_contact_consent",
     {
       title: "Revoke contact consent",
-      description: "Flip an existing consent record to granted=false (PATCH /consent_records/:id/revoke).",
+      description:
+        "Flip an existing consent record to granted=false (PATCH /consent_records/:id/revoke).",
       inputSchema: {
         account_id: optionalAccountId,
         contact_id: contactId,
@@ -296,7 +301,8 @@ export const register: RegisterFn = (server, client) => {
     "get_consent_records_summary",
     {
       title: "Get consent records summary",
-      description: "Aggregate summary of consent records for a contact (per-type latest state, audit counts).",
+      description:
+        "Aggregate summary of consent records for a contact (per-type latest state, audit counts).",
       inputSchema: { account_id: optionalAccountId, contact_id: contactId },
       annotations: { readOnlyHint: true },
     },

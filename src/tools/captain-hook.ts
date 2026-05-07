@@ -46,10 +46,10 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  conversationDisplayId,
   optionalAccountId,
   resolveAccountId,
   safeHandler,
-  conversationDisplayId,
 } from "./_helpers.js";
 
 const captainModelKeys = z
@@ -125,19 +125,14 @@ export const register: RegisterFn = (server, client) => {
         operation: z
           .string()
           .min(1)
-          .describe(
-            "Rewrite operation key — see Captain::RewriteService for supported values",
-          ),
+          .describe("Rewrite operation key — see Captain::RewriteService for supported values"),
         conversation_display_id: conversationDisplayId.optional(),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/captain/tasks/rewrite`,
-          body,
-        );
+        return client.post(`/api/v1/accounts/${acc}/captain/tasks/rewrite`, body);
       }),
   );
 
@@ -145,8 +140,7 @@ export const register: RegisterFn = (server, client) => {
     "run_captain_summarize",
     {
       title: "Run Captain conversation summary",
-      description:
-        "Summarize a customer conversation. Returns the summary string synchronously.",
+      description: "Summarize a customer conversation. Returns the summary string synchronously.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_display_id: conversationDisplayId,
@@ -175,10 +169,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, conversation_display_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/captain/tasks/reply_suggestion`,
-          { conversation_display_id },
-        );
+        return client.post(`/api/v1/accounts/${acc}/captain/tasks/reply_suggestion`, {
+          conversation_display_id,
+        });
       }),
   );
 
@@ -186,8 +179,7 @@ export const register: RegisterFn = (server, client) => {
     "run_captain_label_suggestion",
     {
       title: "Run Captain label suggestion",
-      description:
-        "Suggest labels for a conversation based on its content. Synchronous.",
+      description: "Suggest labels for a conversation based on its content. Synchronous.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_display_id: conversationDisplayId,
@@ -196,10 +188,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, conversation_display_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/captain/tasks/label_suggestion`,
-          { conversation_display_id },
-        );
+        return client.post(`/api/v1/accounts/${acc}/captain/tasks/label_suggestion`, {
+          conversation_display_id,
+        });
       }),
   );
 
@@ -221,18 +212,13 @@ export const register: RegisterFn = (server, client) => {
         follow_up_context: z
           .record(z.string(), z.unknown())
           .optional()
-          .describe(
-            "Context token returned by a previous run_captain_follow_up call",
-          ),
+          .describe("Context token returned by a previous run_captain_follow_up call"),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(
-          `/api/v1/accounts/${acc}/captain/tasks/follow_up`,
-          body,
-        );
+        return client.post(`/api/v1/accounts/${acc}/captain/tasks/follow_up`, body);
       }),
   );
 

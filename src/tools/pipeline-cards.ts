@@ -17,12 +17,12 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  agentUserId,
+  customAttributes,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  customAttributes,
-  pagination,
-  agentUserId,
 } from "./_helpers.js";
 
 const cardId = z.number().int().positive().describe("Pipeline card ID");
@@ -62,7 +62,10 @@ export const register: RegisterFn = (server, client) => {
         if (params.pipeline_id) {
           // Scoped under a pipeline (faster — uses pipeline-level cache)
           const { pipeline_id, ...rest } = params;
-          return client.get(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}/pipeline_cards`, rest);
+          return client.get(
+            `/api/v1/accounts/${acc}/pipelines/${pipeline_id}/pipeline_cards`,
+            rest,
+          );
         }
         return client.get(`/api/v1/accounts/${acc}/pipeline_cards`, params);
       }),
@@ -88,7 +91,8 @@ export const register: RegisterFn = (server, client) => {
     "list_discarded_cards",
     {
       title: "List discarded (soft-deleted) cards",
-      description: "List cards that were soft-deleted (LGPD/GDPR-compliant). Recoverable via restore_card.",
+      description:
+        "List cards that were soft-deleted (LGPD/GDPR-compliant). Recoverable via restore_card.",
       inputSchema: { account_id: optionalAccountId, ...pagination },
       annotations: { readOnlyHint: true },
     },
@@ -104,7 +108,8 @@ export const register: RegisterFn = (server, client) => {
     "create_card",
     {
       title: "Create pipeline card",
-      description: "Create a new card on a stage. Either contact_id or contact_attributes is required.",
+      description:
+        "Create a new card on a stage. Either contact_id or contact_attributes is required.",
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineIdInput,
@@ -141,7 +146,8 @@ export const register: RegisterFn = (server, client) => {
     "update_card",
     {
       title: "Update pipeline card",
-      description: "Update card fields. Use move_card_to_stage for stage changes (it tracks history).",
+      description:
+        "Update card fields. Use move_card_to_stage for stage changes (it tracks history).",
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
@@ -168,7 +174,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_card",
     {
       title: "Delete (soft) pipeline card",
-      description: "Soft-delete a card (LGPD-compliant). Recoverable via restore_card within retention window.",
+      description:
+        "Soft-delete a card (LGPD-compliant). Recoverable via restore_card within retention window.",
       inputSchema: { account_id: accountId, card_id: cardId },
       annotations: { destructiveHint: true },
     },
@@ -184,7 +191,8 @@ export const register: RegisterFn = (server, client) => {
     "move_card_to_stage",
     {
       title: "Move card to stage",
-      description: "Move a card to a different stage. Records stage_history and may trigger automations.",
+      description:
+        "Move a card to a different stage. Records stage_history and may trigger automations.",
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
@@ -232,7 +240,10 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/deal_status/mark_won`, body);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/deal_status/mark_won`,
+          body,
+        );
       }),
   );
 
@@ -251,7 +262,10 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/deal_status/mark_lost`, body);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/deal_status/mark_lost`,
+          body,
+        );
       }),
   );
 
@@ -259,7 +273,8 @@ export const register: RegisterFn = (server, client) => {
     "reopen_card",
     {
       title: "Reopen won/lost card",
-      description: "Reopen a previously closed card (won or lost) and return it to the active flow.",
+      description:
+        "Reopen a previously closed card (won or lost) and return it to the active flow.",
       inputSchema: { account_id: optionalAccountId, card_id: cardId },
     },
     async ({ account_id, card_id }) =>
@@ -331,7 +346,8 @@ export const register: RegisterFn = (server, client) => {
     "bulk_delete_cards",
     {
       title: "Bulk delete (soft) cards",
-      description: "Soft-delete multiple cards. Recoverable via restore_card within retention window.",
+      description:
+        "Soft-delete multiple cards. Recoverable via restore_card within retention window.",
       inputSchema: {
         account_id: accountId,
         card_ids: z.array(z.number().int().positive()).min(1),
@@ -372,7 +388,8 @@ export const register: RegisterFn = (server, client) => {
     "get_card_timeline",
     {
       title: "Get card timeline",
-      description: "Return the full activity timeline of a card (stage changes, activities, notes, automations).",
+      description:
+        "Return the full activity timeline of a card (stage changes, activities, notes, automations).",
       inputSchema: { account_id: optionalAccountId, card_id: cardId },
       annotations: { readOnlyHint: true },
     },
@@ -394,7 +411,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/lead_scores/recalculate`);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/lead_scores/recalculate`,
+        );
       }),
   );
 
@@ -413,7 +432,10 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/lead_scores/override`, body);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/lead_scores/override`,
+          body,
+        );
       }),
   );
 
@@ -422,7 +444,8 @@ export const register: RegisterFn = (server, client) => {
     "restore_card",
     {
       title: "Restore soft-deleted card",
-      description: "Restore a previously soft-deleted card. Use list_discarded_cards to find candidates.",
+      description:
+        "Restore a previously soft-deleted card. Use list_discarded_cards to find candidates.",
       inputSchema: { account_id: optionalAccountId, card_id: cardId },
     },
     async ({ account_id, card_id }) =>
@@ -444,7 +467,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/permanently_delete`);
+        return client.delete(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/permanently_delete`,
+        );
       }),
   );
 

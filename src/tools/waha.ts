@@ -28,12 +28,7 @@
 
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
-import {
-  optionalAccountId,
-  resolveAccountId,
-  safeHandler,
-  inboxId,
-} from "./_helpers.js";
+import { inboxId, optionalAccountId, resolveAccountId, safeHandler } from "./_helpers.js";
 
 export const register: RegisterFn = (server, client) => {
   // ── Status / connection diagnostics ────────────────────────────────────────
@@ -154,8 +149,7 @@ export const register: RegisterFn = (server, client) => {
     "get_waha_settings",
     {
       title: "Get WAHA settings",
-      description:
-        "Read the WAHA inbox settings (split into chatwoot_app/session/webhook scopes).",
+      description: "Read the WAHA inbox settings (split into chatwoot_app/session/webhook scopes).",
       inputSchema: { account_id: optionalAccountId, inbox_id: inboxId },
       annotations: { readOnlyHint: true },
     },
@@ -182,10 +176,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, inbox_id, settings }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/waha/${inbox_id}/settings/chatwoot_app`,
-          { settings },
-        );
+        return client.patch(`/api/v1/accounts/${acc}/waha/${inbox_id}/settings/chatwoot_app`, {
+          settings,
+        });
       }),
   );
 

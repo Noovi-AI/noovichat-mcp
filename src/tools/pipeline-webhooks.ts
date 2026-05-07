@@ -32,9 +32,9 @@ import type { RegisterFn } from "../types.js";
 import {
   accountId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
 } from "./_helpers.js";
 
 const webhookId = z.number().int().positive().describe("Pipeline webhook ID");
@@ -103,13 +103,14 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
-        url: z.string().url().optional().describe("Outbound delivery URL (omit for inbound trigger)"),
+        url: z
+          .string()
+          .url()
+          .optional()
+          .describe("Outbound delivery URL (omit for inbound trigger)"),
         events: z.array(webhookEvent).min(1).describe("Events that trigger this webhook"),
         enabled: z.boolean().optional(),
-        secret: z
-          .string()
-          .optional()
-          .describe("HMAC secret (auto-generated if omitted)"),
+        secret: z.string().optional().describe("HMAC secret (auto-generated if omitted)"),
         headers: z
           .record(z.string(), z.string())
           .optional()
@@ -142,10 +143,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, webhook_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}`, body);
       }),
   );
 
@@ -182,10 +180,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, webhook_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}/test`,
-          body,
-        );
+        return client.post(`/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}/test`, body);
       }),
   );
 

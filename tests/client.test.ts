@@ -22,11 +22,12 @@ describe("NooviChatClient", () => {
   });
 
   it("strips trailing slashes from baseUrl", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
@@ -37,13 +38,14 @@ describe("NooviChatClient", () => {
     await client.get("/api/v1/accounts/1");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    const url = fetchMock.mock.calls[0]?.[0] as string;
+    const url = (fetchMock.mock.calls[0] as unknown as [string])[0];
     expect(url).toBe("https://chat.example.com/api/v1/accounts/1");
   });
 
   it("sends api_access_token header on every request", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
@@ -53,15 +55,16 @@ describe("NooviChatClient", () => {
     });
     await client.get("/api/v1/accounts/1");
 
-    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
     const headers = init.headers as Headers;
     expect(headers.get("api_access_token")).toBe("secret-tok");
     expect(headers.get("Accept")).toBe("application/json");
   });
 
   it("encodes array query params with [] suffix", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
     );
     globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch;
 
@@ -71,12 +74,14 @@ describe("NooviChatClient", () => {
     });
     await client.get("/api/v1/accounts/1/contacts", { tag_ids: ["a", "b"] });
 
-    const url = new URL(fetchMock.mock.calls[0]?.[0] as string);
+    const url = new URL((fetchMock.mock.calls[0] as unknown as [string])[0]);
     expect(url.searchParams.getAll("tag_ids[]")).toEqual(["a", "b"]);
   });
 
   it("returns undefined for 204 responses", async () => {
-    globalThis.fetch = vi.fn(async () => new Response(null, { status: 204 })) as unknown as typeof globalThis.fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response(null, { status: 204 }),
+    ) as unknown as typeof globalThis.fetch;
 
     const client = new NooviChatClient({
       baseUrl: "https://chat.example.com",
@@ -87,12 +92,13 @@ describe("NooviChatClient", () => {
   });
 
   it("throws NooviChatApiError on non-2xx with parsed errors", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ errors: ["Title can't be blank"] }), {
-        status: 422,
-        statusText: "Unprocessable Entity",
-        headers: { "content-type": "application/json" },
-      }),
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ errors: ["Title can't be blank"] }), {
+          status: 422,
+          statusText: "Unprocessable Entity",
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof globalThis.fetch;
 
     const client = new NooviChatClient({
@@ -100,22 +106,24 @@ describe("NooviChatClient", () => {
       apiToken: "tok",
     });
 
-    await expect(client.post("/api/v1/accounts/1/pipeline_cards", { title: "" }))
-      .rejects.toMatchObject({
-        name: "NooviChatApiError",
-        status: 422,
-        errors: ["Title can't be blank"],
-        path: "/api/v1/accounts/1/pipeline_cards",
-      });
+    await expect(
+      client.post("/api/v1/accounts/1/pipeline_cards", { title: "" }),
+    ).rejects.toMatchObject({
+      name: "NooviChatApiError",
+      status: 422,
+      errors: ["Title can't be blank"],
+      path: "/api/v1/accounts/1/pipeline_cards",
+    });
   });
 
   it("falls back to `error` string when `errors` array missing", async () => {
-    globalThis.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        statusText: "Forbidden",
-        headers: { "content-type": "application/json" },
-      }),
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403,
+          statusText: "Forbidden",
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof globalThis.fetch;
 
     const client = new NooviChatClient({

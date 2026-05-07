@@ -31,11 +31,11 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
+  agentUserId,
   optionalAccountId,
+  pagination,
   resolveAccountId,
   safeHandler,
-  pagination,
-  agentUserId,
 } from "./_helpers.js";
 
 const chatId = z.number().int().positive().describe("Internal chat ID");
@@ -113,7 +113,8 @@ export const register: RegisterFn = (server, client) => {
     "create_group_chat",
     {
       title: "Create group chat",
-      description: "Create a named group chat with a list of member agent IDs. The creator is added as a participant.",
+      description:
+        "Create a named group chat with a list of member agent IDs. The creator is added as a participant.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1).describe("Group chat display name"),
@@ -190,7 +191,8 @@ export const register: RegisterFn = (server, client) => {
     "remove_chat_member",
     {
       title: "Remove member from a group chat",
-      description: "Remove a single agent from a group chat (DELETE /internal_chats/:chat_id/members/:user_id).",
+      description:
+        "Remove a single agent from a group chat (DELETE /internal_chats/:chat_id/members/:user_id).",
       inputSchema: {
         account_id: accountId,
         chat_id: chatId,
@@ -201,7 +203,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, chat_id, user_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(`/api/v1/accounts/${acc}/internal_chats/${chat_id}/members/${user_id}`);
+        return client.delete(
+          `/api/v1/accounts/${acc}/internal_chats/${chat_id}/members/${user_id}`,
+        );
       }),
   );
 
@@ -229,7 +233,12 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         chat_id: chatId,
-        before: z.number().int().positive().optional().describe("Return messages with id < this (for back-pagination)"),
+        before: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Return messages with id < this (for back-pagination)"),
         ...pagination,
       },
       annotations: { readOnlyHint: true },
