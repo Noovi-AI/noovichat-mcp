@@ -1,0 +1,587 @@
+/**
+ * Follow-Ups (formerly "Scheduled Messages") — schedule personalized messages
+ * to be sent later in conversations or pipeline cards.
+ *
+ * Routes (Chatwoot/config/routes.rb):
+ *   /api/v1/accounts/:account_id/follow-ups (account-level index, line 251)
+ *
+ *   /api/v1/accounts/:account_id/conversations/:conversation_id/follow-ups
+ *     (lines 211-219, full CRUD + member: cancel, retry_send + collection: count)
+ *
+ *   /api/v1/accounts/:account_id/follow-up-templates (lines 252-265)
+ *     member: POST preview, DELETE attachments/:attachment_id
+ *     collection: GET variables
+ *     nested: items (POST :reorder collection)
+ *
+ *   /api/v1/accounts/:account_id/follow-up-automations (line 266)
+ *
+ *   /api/v2/accounts/:account_id/reports/follow-ups (lines 832-839)
+ *     collection: GET summary, GET by_user, GET by_template, GET export
+ *
+ * `ScheduledMessage` is a backward-compat alias of `FollowUp` — same routes.
+ */
+
+import { z } from "zod";
+import type { RegisterFn } from "../types.js";
+import {
+  accountId,
+  optionalAccountId,
+  resolveAccountId,
+  safeHandler,
+  pagination,
+  conversationDisplayId,
+} from "./_helpers.js";
+
+const followUpId = z.number().int().positive().describe("Follow-up ID");
+const templateId = z.number().int().positive().describe("Follow-up template ID");
+const templateItemId = z.number().int().positive().describe("Follow-up template item ID");
+const automationId = z.number().int().positive().describe("Follow-up automation ID");
+
+const followUpStatus = z
+  .enum(["pending", "scheduled", "sending", "sent", "failed", "cancelled"])
+  .describe("Follow-up delivery status");
+
+export const register: RegisterFn = (server, client) => {
+  // ── Follow-ups (account-level read + nested CRUD under conversation) ───────
+  server.registerTool(
+    "list_followups",
+    {
+      title: "List follow-ups",
+      description:
+        "Account-level list of follow-ups. Filter by status, conversation_id, scheduled date range, or template.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        status: followUpStatus.optional(),
+        conversation_id: conversationDisplayId.optional(),
+        pipeline_card_id: z.number().int().positive().optional(),
+        template_id: templateId.optional(),
+        scheduled_from: z.string().optional().describe("ISO8601 from"),
+        scheduled_to: z.string().optional().describe("ISO8601 to"),
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-ups`, params);
+      }),
+  );
+
+  server.registerTool(
+    "get_followup",
+    {
+      title: "Get follow-up",
+      description:
+        "Read a follow-up's full detail (rendered content, attachments, scheduled_at, last attempt).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        followup_id: followUpId,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, conversation_id, followup_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "create_followup",
+    {
+      title: "Create follow-up (schedule a message)",
+      description:
+        "Schedule a personalized message to be sent later. Must be created under a conversation; pipeline_card_id may be linked through context.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        scheduled_at: z.string().describe("ISO8601 scheduled datetime"),
+        content: z
+          .string()
+          .optional()
+          .describe("Raw message content (required unless template_id is provided)"),
+        template_id: templateId.optional().describe("Use a template instead of raw content"),
+        template_variables: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Variables to render the template (overrides automatic resolution)"),
+        pipeline_card_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Optionally link the follow-up to a pipeline card"),
+        attachment_ids: z
+          .array(z.number().int().positive())
+          .optional()
+          .describe("Direct-upload IDs to attach"),
+      },
+    },
+    async ({ account_id, conversation_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id as number | undefined);
+        return client.post(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "update_followup",
+    {
+      title: "Update follow-up",
+      description: "Update scheduled_at, content, or template variables on a pending follow-up.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        followup_id: followUpId,
+        scheduled_at: z.string().optional(),
+        content: z.string().optional(),
+        template_variables: z.record(z.string(), z.unknown()).optional(),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, conversation_id, followup_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.patch(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "cancel_followup",
+    {
+      title: "Cancel follow-up",
+      description: "Cancel a pending or scheduled follow-up. Status becomes `cancelled`.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        followup_id: followUpId,
+      },
+    },
+    async ({ account_id, conversation_id, followup_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}/cancel`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "retry_send_followup",
+    {
+      title: "Retry sending a failed follow-up",
+      description: "Re-attempt delivery of a follow-up that previously failed.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        followup_id: followUpId,
+      },
+    },
+    async ({ account_id, conversation_id, followup_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}/retry_send`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "count_conversation_followups",
+    {
+      title: "Count follow-ups in a conversation",
+      description: "Lightweight count of follow-ups for a conversation (for badges).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        conversation_id: conversationDisplayId,
+        status: followUpStatus.optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, conversation_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/count`,
+          params,
+        );
+      }),
+  );
+
+  // ── Templates ──────────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_followup_templates",
+    {
+      title: "List follow-up templates",
+      description: "List reusable follow-up templates for the account.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-templates`, params);
+      }),
+  );
+
+  server.registerTool(
+    "get_followup_template",
+    {
+      title: "Get follow-up template",
+      description: "Full detail of a follow-up template (content, items, attachments).",
+      inputSchema: { account_id: optionalAccountId, template_id: templateId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, template_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}`);
+      }),
+  );
+
+  server.registerTool(
+    "create_followup_template",
+    {
+      title: "Create follow-up template",
+      description:
+        "Create a reusable follow-up template with optional placeholder variables (e.g., {{contact.name}}).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        name: z.string().min(1),
+        content: z.string().min(1).describe("Template body — supports liquid-style variables"),
+        description: z.string().optional(),
+        category: z.string().optional(),
+        attachment_ids: z.array(z.number().int().positive()).optional(),
+      },
+    },
+    async ({ account_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id as number | undefined);
+        return client.post(`/api/v1/accounts/${acc}/follow-up-templates`, body);
+      }),
+  );
+
+  server.registerTool(
+    "update_followup_template",
+    {
+      title: "Update follow-up template",
+      description: "Update template name, content, description or category.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        name: z.string().optional(),
+        content: z.string().optional(),
+        description: z.string().optional(),
+        category: z.string().optional(),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, template_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.patch(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "delete_followup_template",
+    {
+      title: "Delete follow-up template",
+      description: "Delete a follow-up template.",
+      inputSchema: { account_id: accountId, template_id: templateId },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, template_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}`);
+      }),
+  );
+
+  server.registerTool(
+    "preview_followup_template",
+    {
+      title: "Preview follow-up template",
+      description: "Render a template against sample variables to preview the final message.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        variables: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Variables to substitute during render"),
+        contact_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Render against a real contact (auto-fills variables)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, template_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/preview`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "list_followup_template_variables",
+    {
+      title: "List available follow-up template variables",
+      description:
+        "List the variables (placeholders) the template renderer supports — e.g., contact, account, agent, conversation fields.",
+      inputSchema: { account_id: optionalAccountId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-templates/variables`);
+      }),
+  );
+
+  // ── Template items (steps) ─────────────────────────────────────────────────
+  server.registerTool(
+    "list_followup_template_items",
+    {
+      title: "List template items (steps)",
+      description: "List ordered items (steps) of a follow-up template.",
+      inputSchema: { account_id: optionalAccountId, template_id: templateId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, template_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "create_followup_template_item",
+    {
+      title: "Create template item",
+      description: "Add an ordered step to a follow-up template.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        content: z.string().min(1),
+        offset_minutes: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("Minutes after anchor when this step fires"),
+        position: z.number().int().nonnegative().optional(),
+        attachment_ids: z.array(z.number().int().positive()).optional(),
+      },
+    },
+    async ({ account_id, template_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "delete_followup_template_item",
+    {
+      title: "Delete template item",
+      description: "Remove a step from a follow-up template.",
+      inputSchema: {
+        account_id: accountId,
+        template_id: templateId,
+        item_id: templateItemId,
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, template_id, item_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items/${item_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "reorder_followup_template_items",
+    {
+      title: "Reorder template items",
+      description: "Reorder the steps of a follow-up template.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        item_ids: z
+          .array(z.number().int().positive())
+          .min(1)
+          .describe("Item IDs in the desired order"),
+      },
+    },
+    async ({ account_id, template_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items/reorder`,
+          body,
+        );
+      }),
+  );
+
+  // ── Automations ────────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_followup_automations",
+    {
+      title: "List follow-up automations",
+      description: "List automations that trigger follow-ups based on conversation/pipeline events.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        enabled: z.boolean().optional(),
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-automations`, params);
+      }),
+  );
+
+  server.registerTool(
+    "get_followup_automation",
+    {
+      title: "Get follow-up automation",
+      description: "Full detail of a follow-up automation.",
+      inputSchema: { account_id: optionalAccountId, automation_id: automationId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, automation_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`);
+      }),
+  );
+
+  server.registerTool(
+    "create_followup_automation",
+    {
+      title: "Create follow-up automation",
+      description:
+        "Create an automation that schedules follow-ups based on triggers (conversation_created, status changed, no_reply timer, etc.).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        name: z.string().min(1),
+        description: z.string().optional(),
+        enabled: z.boolean().optional(),
+        trigger: z.string().describe("Trigger key, e.g. 'conversation.created', 'no_reply'"),
+        conditions: z.array(z.record(z.string(), z.unknown())).optional(),
+        actions: z
+          .array(z.record(z.string(), z.unknown()))
+          .describe("Action list (use template, schedule offset, channel, etc.)"),
+      },
+    },
+    async ({ account_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id as number | undefined);
+        return client.post(`/api/v1/accounts/${acc}/follow-up-automations`, body);
+      }),
+  );
+
+  server.registerTool(
+    "update_followup_automation",
+    {
+      title: "Update follow-up automation",
+      description: "Update an automation's name, trigger, conditions, actions or enabled flag.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        automation_id: automationId,
+        name: z.string().optional(),
+        description: z.string().optional(),
+        enabled: z.boolean().optional(),
+        trigger: z.string().optional(),
+        conditions: z.array(z.record(z.string(), z.unknown())).optional(),
+        actions: z.array(z.record(z.string(), z.unknown())).optional(),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, automation_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.patch(
+          `/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "delete_followup_automation",
+    {
+      title: "Delete follow-up automation",
+      description: "Delete a follow-up automation.",
+      inputSchema: { account_id: accountId, automation_id: automationId },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, automation_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(`/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`);
+      }),
+  );
+
+  // ── Reports (v2) ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "get_followups_report",
+    {
+      title: "Get follow-ups report",
+      description:
+        "Aggregated follow-up reports under v2 namespace. Pass `view` to switch between summary, by_user, by_template or export.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        view: z
+          .enum(["index", "summary", "by_user", "by_template", "export"])
+          .default("summary")
+          .describe("Which report endpoint to call"),
+        from: z.string().optional().describe("ISO8601 from"),
+        to: z.string().optional().describe("ISO8601 to"),
+        user_id: z.number().int().positive().optional(),
+        template_id: templateId.optional(),
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, view, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        const base = `/api/v2/accounts/${acc}/reports/follow-ups`;
+        const path = view === "index" ? base : `${base}/${view}`;
+        return client.get(path, params);
+      }),
+  );
+};

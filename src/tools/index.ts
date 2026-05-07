@@ -1,0 +1,78 @@
+/**
+ * Aggregator — imports each tool module and calls its `register` function
+ * with the shared MCP server + NooviChat client.
+ *
+ * NOTE: each module is responsible for registering its own tools via
+ * `server.registerTool(...)`. Adding a new resource = adding a new
+ * import + entry below. Order is irrelevant.
+ */
+
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { NooviChatClient } from "../client.js";
+
+// ── Pipeline Pro (NooviChat flagship) ────────────────────────────────────────
+import { register as registerPipelines } from "./pipelines.js";
+import { register as registerPipelineCards } from "./pipeline-cards.js";
+import { register as registerPipelineAutomations } from "./pipeline-automations.js";
+import { register as registerPipelineActivities } from "./pipeline-activities.js";
+import { register as registerPipelineSequences } from "./pipeline-sequences.js";
+import { register as registerPipelineWebhooks } from "./pipeline-webhooks.js";
+
+// ── Follow-ups & Atendimentos ────────────────────────────────────────────────
+import { register as registerFollowUps } from "./follow-ups.js";
+import { register as registerAppointments } from "./appointments.js";
+
+// ── Broadcasts & WhatsApp ─────────────────────────────────────────────────────
+import { register as registerBroadcasts } from "./broadcasts.js";
+import { register as registerWhatsappTemplates } from "./whatsapp-templates.js";
+import { register as registerWaha } from "./waha.js";
+import { register as registerUazapi } from "./uazapi.js";
+
+// ── CRM & lead management ─────────────────────────────────────────────────────
+import { register as registerLeadScoring } from "./lead-scoring.js";
+import { register as registerCompanies } from "./companies.js";
+import { register as registerInternalChat } from "./internal-chat.js";
+
+// ── Atendimento extensions (Cat A) ────────────────────────────────────────────
+import { register as registerAtendimentoExt } from "./atendimento-extensions.js";
+
+// ── Cat B confirmadas (custom NooviChat) ──────────────────────────────────────
+import { register as registerGoogleCalendar } from "./google-calendar.js";
+
+// ── Admin / diagnostic ────────────────────────────────────────────────────────
+import { register as registerNooviLicense } from "./noovi-license.js";
+import { register as registerNooviLabs } from "./noovi-labs.js";
+import { register as registerWhitelabel } from "./whitelabel.js";
+import { register as registerCaptainHook } from "./captain-hook.js";
+import { register as registerAudio } from "./audio.js";
+
+const registrations = [
+  registerPipelines,
+  registerPipelineCards,
+  registerPipelineAutomations,
+  registerPipelineActivities,
+  registerPipelineSequences,
+  registerPipelineWebhooks,
+  registerFollowUps,
+  registerAppointments,
+  registerBroadcasts,
+  registerWhatsappTemplates,
+  registerWaha,
+  registerUazapi,
+  registerLeadScoring,
+  registerCompanies,
+  registerInternalChat,
+  registerAtendimentoExt,
+  registerGoogleCalendar,
+  registerNooviLicense,
+  registerNooviLabs,
+  registerWhitelabel,
+  registerCaptainHook,
+  registerAudio,
+];
+
+export function registerAllTools(server: McpServer, client: NooviChatClient): void {
+  for (const register of registrations) {
+    register(server, client);
+  }
+}
