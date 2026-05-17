@@ -5,6 +5,39 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-05-17
+
+### Security
+
+- Removed the `noovi-license` module. The NooviChat licensing/DRM system is
+  a product-protection boundary and must never be readable or mutable by API
+  clients or LLMs. The module registered no tools but carried a roadmap to
+  expose them — removed entirely.
+
+### Fixed
+
+A continuous CRUD-lifecycle audit of every dev-testable module found and
+fixed a batch of request-contract mismatches:
+
+- **pipeline activities**: member actions (get/update/delete/start/complete/
+  cancel/reschedule) are card-scoped — `card_id` was missing, so every one
+  404'd. create/update now wrap in `{ activity: ... }` and use the real
+  columns (`activity_type`, `duration`, `assigned_to_id`); activityType enum
+  corrected.
+- **activity templates**: create/update wrap in `{ pipeline_activity_template:
+  ... }`; schema realigned to real columns (`activity_type`, `default_content`,
+  `default_duration`, `category`, `default_metadata`).
+- **pipeline webhooks**: create/update wrap in `{ pipeline_webhook: ... }`;
+  `enabled` → `active`; added `pipeline_id`; webhookEvent enum replaced with
+  the real `AVAILABLE_EVENTS` (`pipeline_card_created` …).
+- **activity sequences**: create/update wrap in `{ pipeline_activity_sequence:
+  ... }`.
+- **bulk_assign_cards**: sent `card_ids`; the backend reads `item_ids`.
+- **create_contact_consent_record**: `source` is now an enum
+  (agent | widget | import | api | whatsapp).
+- **start_card_sequence**: sent `sequence_definition_id`; the backend reads
+  `definition_id`.
+
 ## [0.3.0] - 2026-05-17
 
 ### Added
