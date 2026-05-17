@@ -45,8 +45,8 @@ for them to work end-to-end.
 | **Google Calendar** | 8 | Sync to/from, bulk sync, toggle, status, circuit breaker controls |
 | **Captain AI hook** | 7 | Preferences + 5 synchronous AI tasks (rewrite, summarize, reply, label, follow-up) |
 | **Whitelabel (super_admin)** | 16 | Branding, AI providers, scripts, audit logs, backups |
-| **NooviLicense / NooviLabs / Audio** | 0 (today) | No public API yet — JSDoc roadmaps included |
-| **Total** | **270** | Across 22 feature modules |
+| **NooviLabs / Audio** | 0 (today) | No public API yet — JSDoc roadmaps included |
+| **Total** | **274** | Across 21 feature modules |
 
 ## Install
 
