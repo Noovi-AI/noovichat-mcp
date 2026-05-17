@@ -220,14 +220,14 @@ export const register: RegisterFn = (server, client) => {
     "bulk_appointment_action",
     {
       title: "Bulk appointment action",
-      description:
-        "Apply an action (confirm, cancel, complete, no_show, delete) to many appointments at once.",
+      description: "Apply an action (confirm, cancel, no_show) to many appointments at once.",
       inputSchema: {
         account_id: accountId,
-        action: z
-          .enum(["confirm", "cancel", "complete", "no_show", "delete"])
-          .describe("Bulk action verb"),
+        // Sent as `bulk_action` — `action` is reserved by Rails routing and
+        // would be ignored by the backend.
+        bulk_action: z.enum(["confirm", "cancel", "no_show"]).describe("Bulk action verb"),
         ids: z.array(appointmentId).min(1).describe("Appointment IDs to act on"),
+        reason: z.string().optional().describe("Cancellation reason (when bulk_action='cancel')"),
       },
       annotations: { destructiveHint: true },
     },
