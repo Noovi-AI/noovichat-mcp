@@ -87,6 +87,15 @@ export const register: RegisterFn = (server, client) => {
           )
           .optional()
           .describe("Initial stages (can also be added via update)"),
+        inbox_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "Link the pipeline to an inbox — cards are then auto-created from " +
+              "that inbox's conversations. One inbox maps to at most one pipeline.",
+          ),
         settings: z.record(z.string(), z.unknown()).optional(),
       },
     },
@@ -116,6 +125,13 @@ export const register: RegisterFn = (server, client) => {
         name: z.string().optional(),
         description: z.string().optional(),
         active: z.boolean().optional(),
+        inbox_id: z
+          .number()
+          .int()
+          .positive()
+          .nullable()
+          .optional()
+          .describe("Link/relink the pipeline to an inbox (pass null to unlink)"),
         settings: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { idempotentHint: true },
