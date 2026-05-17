@@ -89,15 +89,11 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create lead score rule",
       description:
-        "Create a lead-scoring rule. Conditions describe when it applies; score is the delta added when matched.",
+        "Create a lead-scoring rule. Conditions describe when it applies; points is the delta added when matched.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1).describe("Rule name"),
         description: z.string().optional(),
-        category: z
-          .string()
-          .optional()
-          .describe("Rule category (e.g., demographic, behavioral, engagement)"),
         // event_type is REQUIRED by the backend (validated by LeadScoreRule#event_type
         // inclusion in the allowed-events list). Was missing here — calls returned
         // 422 "Event type can't be blank, Event type is not included in the list".
@@ -110,21 +106,31 @@ export const register: RegisterFn = (server, client) => {
               "'contact_created', 'card_created', 'card_moved', etc. " +
               "Check the LeadScoreRule model for the full enum.",
           ),
-        score: z
+        event_subtype: z.string().optional().describe("Optional event subtype filter"),
+        // Backend column is `points` (not `score`) and `enabled` (not `active`).
+        // The old names were silently dropped by strong-params on create.
+        points: z
           .number()
           .int()
           .describe("Score delta applied when conditions match (can be negative)"),
         conditions: z
           .record(z.string(), z.unknown())
           .describe("Condition tree (operator/operands JSON)"),
-        active: z.boolean().optional().describe("Whether the rule is enabled (default true)"),
+        enabled: z.boolean().optional().describe("Whether the rule is enabled (default true)"),
         priority: z.number().int().optional().describe("Evaluation order (lower runs first)"),
+        cooldown_minutes: z
+          .number()
+          .int()
+          .optional()
+          .describe("Minimum minutes between two applications of this rule"),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/lead_score_rules`, body);
+        // Controller does `params.require(:lead_score_rule)` — wrap explicitly
+        // so the request never depends on Rails implicit parameter-wrapping.
+        return client.post(`/api/v1/accounts/${acc}/lead_score_rules`, { lead_score_rule: body });
       }),
   );
 
@@ -138,18 +144,22 @@ export const register: RegisterFn = (server, client) => {
         rule_id: ruleId,
         name: z.string().optional(),
         description: z.string().optional(),
-        category: z.string().optional(),
-        score: z.number().int().optional(),
+        event_type: z.string().optional(),
+        event_subtype: z.string().optional(),
+        points: z.number().int().optional().describe("Score delta (backend column `points`)"),
         conditions: z.record(z.string(), z.unknown()).optional(),
-        active: z.boolean().optional(),
+        enabled: z.boolean().optional().describe("Whether the rule is enabled (backend `enabled`)"),
         priority: z.number().int().optional(),
+        cooldown_minutes: z.number().int().optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, rule_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/lead_score_rules/${rule_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/lead_score_rules/${rule_id}`, {
+          lead_score_rule: body,
+        });
       }),
   );
 

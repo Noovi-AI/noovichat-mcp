@@ -43,11 +43,20 @@ const automationId = z.number().int().positive().describe("Pipeline automation I
 const templateId = z.number().int().positive().describe("Automation template ID");
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
 
-const flowDefinition = z
+// Backend column is `flow` (a JSON object with `nodes`/`edges`). When `flow`
+// has nodes the automation is "flow-based" and the backend skips the
+// trigger/actions presence validation. Was wrongly named `flow_definition`.
+const flowObject = z
   .record(z.string(), z.unknown())
   .describe(
-    "Flow definition object (nodes, edges, trigger, conditions, actions). Shape mirrors the FlowBuilder UI.",
+    "Flow object — must contain a `nodes` array (and usually `edges`). " +
+      "Shape mirrors the FlowBuilder UI; e.g. { nodes: [...], edges: [...] }.",
   );
+
+// Backend enum: PipelineAutomation::TRIGGER_TYPES
+const automationTriggerType = z
+  .enum(["event", "webhook", "scheduled", "manual"])
+  .describe("How the automation is triggered (PipelineAutomation::TRIGGER_TYPES)");
 
 export const register: RegisterFn = (server, client) => {
   // ── List & detail ──────────────────────────────────────────────────────────
@@ -95,20 +104,37 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create pipeline automation",
       description:
-        "Create an automation. The `flow_definition` carries the trigger, conditions and actions tree.",
+        "Create an automation. Provide `flow` (a FlowBuilder graph with nodes) — " +
+        "flow-based automations carry their trigger/conditions/actions inside the graph.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
         description: z.string().optional(),
         pipeline_id: z.number().int().positive().optional(),
-        enabled: z.boolean().optional(),
-        flow_definition: flowDefinition,
+        // Backend column is `active` (not `enabled`).
+        active: z.boolean().optional().describe("Whether the automation is active (default true)"),
+        trigger_type: automationTriggerType.optional(),
+        trigger: z.record(z.string(), z.unknown()).optional().describe("Trigger config object"),
+        conditions: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe("Condition list evaluated before the actions run"),
+        schedule_config: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Schedule config when trigger_type='scheduled'"),
+        flow: flowObject,
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/automations`, body);
+        // Controller does `params.require(:pipeline_automation)`. Rails implicit
+        // wrapping infers the wrong key (`automation`) from the controller name,
+        // so wrap explicitly to avoid a 422 "param is missing".
+        return client.post(`/api/v1/accounts/${acc}/pipeline/automations`, {
+          pipeline_automation: body,
+        });
       }),
   );
 
@@ -116,21 +142,28 @@ export const register: RegisterFn = (server, client) => {
     "update_pipeline_automation",
     {
       title: "Update pipeline automation",
-      description: "Update name, description, enabled flag, or flow definition.",
+      description: "Update name, description, active flag, trigger config or flow graph.",
       inputSchema: {
         account_id: optionalAccountId,
         automation_id: automationId,
         name: z.string().min(1).optional(),
         description: z.string().optional(),
-        enabled: z.boolean().optional(),
-        flow_definition: flowDefinition.optional(),
+        pipeline_id: z.number().int().positive().optional(),
+        active: z.boolean().optional(),
+        trigger_type: automationTriggerType.optional(),
+        trigger: z.record(z.string(), z.unknown()).optional(),
+        conditions: z.array(z.record(z.string(), z.unknown())).optional(),
+        schedule_config: z.record(z.string(), z.unknown()).optional(),
+        flow: flowObject.optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, automation_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/pipeline/automations/${automation_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/automations/${automation_id}`, {
+          pipeline_automation: body,
+        });
       }),
   );
 
@@ -224,19 +257,18 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Validate a flow definition (without persisting)",
       description:
-        "Validate a flow_definition payload before creating/updating. Useful for FlowBuilder live preview.",
+        "Validate a flow graph before creating/updating. Useful for FlowBuilder live preview.",
       inputSchema: {
         account_id: optionalAccountId,
-        flow_definition: flowDefinition,
+        flow: flowObject,
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, flow_definition }) =>
+    async ({ account_id, flow }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/automations/validate_flow`, {
-          flow_definition,
-        });
+        // Backend action reads `params[:flow]`.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/automations/validate_flow`, { flow });
       }),
   );
 

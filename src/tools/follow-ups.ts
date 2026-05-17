@@ -382,24 +382,27 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,
-        content: z.string().min(1),
-        offset_minutes: z
+        // Required by the backend (FollowUpTemplateItem::ITEM_TYPES).
+        item_type: z
+          .enum(["text", "image", "audio", "video", "document"])
+          .describe("Step type — `text` requires `content`; media types use attachments"),
+        content: z.string().optional().describe("Message body (required when item_type is 'text')"),
+        delay_seconds: z
           .number()
           .int()
           .nonnegative()
           .optional()
-          .describe("Minutes after anchor when this step fires"),
+          .describe("Seconds after the previous step before this one fires"),
         position: z.number().int().nonnegative().optional(),
-        attachment_ids: z.array(z.number().int().positive()).optional(),
       },
     },
     async ({ account_id, template_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(
-          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`,
-          body,
-        );
+        // Controller does `params.require(:follow_up_template_item)` — wrap explicitly.
+        return client.post(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`, {
+          follow_up_template_item: body,
+        });
       }),
   );
 
@@ -484,28 +487,57 @@ export const register: RegisterFn = (server, client) => {
       }),
   );
 
+  // Backend enum: FollowUpAutomation::TRIGGER_TYPES
+  const followUpTriggerType = z
+    .enum([
+      "label_added",
+      "label_removed",
+      "contact_created",
+      "conversation_created",
+      "conversation_resolved",
+    ])
+    .describe("Event that fires the automation (FollowUpAutomation::TRIGGER_TYPES)");
+
   server.registerTool(
     "create_followup_automation",
     {
       title: "Create follow-up automation",
       description:
-        "Create an automation that schedules follow-ups based on triggers (conversation_created, status changed, no_reply timer, etc.).",
+        "Create an automation that schedules a follow-up (from a template) when a trigger event fires.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
-        description: z.string().optional(),
-        enabled: z.boolean().optional(),
-        trigger: z.string().describe("Trigger key, e.g. 'conversation.created', 'no_reply'"),
-        conditions: z.array(z.record(z.string(), z.unknown())).optional(),
-        actions: z
-          .array(z.record(z.string(), z.unknown()))
-          .describe("Action list (use template, schedule offset, channel, etc.)"),
+        trigger_type: followUpTriggerType,
+        // Required by the backend — the automation must point at a template.
+        follow_up_template_id: z
+          .number()
+          .int()
+          .positive()
+          .describe("ID of the FollowUpTemplate to schedule when triggered (required)"),
+        delay_minutes: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("Minutes to wait after the trigger before scheduling the follow-up"),
+        enabled: z.boolean().optional().describe("Whether the automation is active (default true)"),
+        trigger_config: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Trigger-specific config (e.g. { label: 'vip' } for label_added)"),
+        conditions: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Additional condition tree evaluated before scheduling"),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/follow-up-automations`, body);
+        // Controller does `params.require(:follow_up_automation)` — wrap explicitly.
+        return client.post(`/api/v1/accounts/${acc}/follow-up-automations`, {
+          follow_up_automation: body,
+        });
       }),
   );
 
@@ -513,23 +545,27 @@ export const register: RegisterFn = (server, client) => {
     "update_followup_automation",
     {
       title: "Update follow-up automation",
-      description: "Update an automation's name, trigger, conditions, actions or enabled flag.",
+      description:
+        "Update an automation's name, trigger, template, delay, conditions or enabled flag.",
       inputSchema: {
         account_id: optionalAccountId,
         automation_id: automationId,
         name: z.string().optional(),
-        description: z.string().optional(),
+        trigger_type: followUpTriggerType.optional(),
+        follow_up_template_id: z.number().int().positive().optional(),
+        delay_minutes: z.number().int().nonnegative().optional(),
         enabled: z.boolean().optional(),
-        trigger: z.string().optional(),
-        conditions: z.array(z.record(z.string(), z.unknown())).optional(),
-        actions: z.array(z.record(z.string(), z.unknown())).optional(),
+        trigger_config: z.record(z.string(), z.unknown()).optional(),
+        conditions: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, automation_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/follow-up-automations/${automation_id}`, {
+          follow_up_automation: body,
+        });
       }),
   );
 

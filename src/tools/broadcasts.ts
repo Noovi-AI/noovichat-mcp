@@ -43,9 +43,13 @@ const broadcastStatus = z
   .enum(["pending", "running", "paused", "completed", "cancelled", "failed"])
   .describe("Broadcast lifecycle status");
 
+// Backend enum: Broadcast.source_type — csv | tags | kanban
 const sourceType = z
-  .enum(["csv", "kanban", "label", "manual"])
-  .describe("How the contact list is sourced for this broadcast");
+  .enum(["csv", "tags", "kanban"])
+  .describe(
+    "How the contact list is sourced: 'csv' (source_config.csv_rows), " +
+      "'tags' (contact tags) or 'kanban' (pipeline filter)",
+  );
 
 const rotationMode = z
   .enum(["round_robin", "weighted", "random"])
@@ -74,11 +78,16 @@ const broadcastCoreFields = {
   window_start_time: z.string().optional().describe("HH:MM 24h"),
   window_end_time: z.string().optional().describe("HH:MM 24h"),
   allowed_weekdays: z.array(z.number().int().min(0).max(6)).optional().describe("0=Sun .. 6=Sat"),
-  message_type: z.enum(["text", "media", "template"]).optional(),
+  // Backend enum: Broadcast.message_type — custom | template
+  message_type: z.enum(["custom", "template"]).optional(),
   message_payload: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe("Message payload — content depends on message_type"),
+    .describe(
+      "Message payload. For message_type='custom' it MUST contain a `messages` " +
+        'array, e.g. { messages: [{ type: "text", text: "Olá {{nome}}" }] }. ' +
+        "For 'template', pass the template name and parameters.",
+    ),
   enable_spintax: z.boolean().optional(),
   enable_follow_up: z.boolean().optional(),
   follow_up_after_hours: z.number().int().nonnegative().optional(),
@@ -172,6 +181,9 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         broadcast_id: broadcastId,
         ...broadcastCoreFields,
+        // On update every field is optional — `name` must not be forced
+        // (it is required only in broadcastCoreFields for the create path).
+        name: z.string().min(1).optional().describe("Broadcast name"),
       },
       annotations: { idempotentHint: true },
     },
