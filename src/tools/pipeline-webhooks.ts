@@ -43,19 +43,18 @@ const webhookToken = z
   .min(1)
   .describe("Public webhook token (URL-safe string from create_pipeline_webhook response)");
 
+// Backend enum: PipelineWebhook::AVAILABLE_EVENTS
 const webhookEvent = z
   .enum([
-    "card.created",
-    "card.updated",
-    "card.moved",
-    "card.won",
-    "card.lost",
-    "card.deleted",
-    "automation.executed",
-    "sequence.started",
-    "sequence.completed",
+    "pipeline_card_created",
+    "pipeline_card_updated",
+    "pipeline_card_deleted",
+    "pipeline_card_stage_changed",
+    "pipeline_card_won",
+    "pipeline_card_lost",
+    "pipeline_card_owner_changed",
   ])
-  .describe("Webhook event name");
+  .describe("Webhook event name (PipelineWebhook::AVAILABLE_EVENTS)");
 
 export const register: RegisterFn = (server, client) => {
   // ── Managed webhook CRUD (account-scoped) ──────────────────────────────────
@@ -103,24 +102,27 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
+        pipeline_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Pipeline the webhook belongs to"),
         url: z
           .string()
           .url()
           .optional()
           .describe("Outbound delivery URL (omit for inbound trigger)"),
         events: z.array(webhookEvent).min(1).describe("Events that trigger this webhook"),
-        enabled: z.boolean().optional(),
-        secret: z.string().optional().describe("HMAC secret (auto-generated if omitted)"),
-        headers: z
-          .record(z.string(), z.string())
-          .optional()
-          .describe("Custom HTTP headers to forward on outbound deliveries"),
+        // Backend column is `active` (not `enabled`).
+        active: z.boolean().optional().describe("Whether the webhook is active (default true)"),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/webhooks`, body);
+        // Controller does `params.require(:pipeline_webhook)`.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/webhooks`, { pipeline_webhook: body });
       }),
   );
 
@@ -128,22 +130,23 @@ export const register: RegisterFn = (server, client) => {
     "update_pipeline_webhook",
     {
       title: "Update pipeline webhook",
-      description: "Update webhook URL, events, enabled flag or headers.",
+      description: "Update webhook URL, events or active flag.",
       inputSchema: {
         account_id: optionalAccountId,
         webhook_id: webhookId,
         name: z.string().optional(),
         url: z.string().url().optional(),
         events: z.array(webhookEvent).optional(),
-        enabled: z.boolean().optional(),
-        headers: z.record(z.string(), z.string()).optional(),
+        active: z.boolean().optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, webhook_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/webhooks/${webhook_id}`, {
+          pipeline_webhook: body,
+        });
       }),
   );
 

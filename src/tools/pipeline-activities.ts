@@ -34,9 +34,10 @@ const sequenceId = z.number().int().positive().describe("Activity sequence ID");
 const templateId = z.number().int().positive().describe("Activity template ID");
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
 
+// Backend enum: PipelineActivity::ACTIVITY_TYPES
 const activityType = z
-  .enum(["task", "call", "meeting", "email", "whatsapp", "note", "custom"])
-  .describe("Activity type");
+  .enum(["call", "email", "meeting", "task", "note", "demo", "follow_up"])
+  .describe("Activity type (PipelineActivity::ACTIVITY_TYPES)");
 
 const activityStatus = z
   .enum(["pending", "in_progress", "completed", "cancelled", "overdue"])
@@ -73,13 +74,17 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get pipeline activity",
       description: "Read full activity detail (participants, attachments, reminders).",
-      inputSchema: { account_id: optionalAccountId, activity_id: activityId },
+      // Activities are card-scoped: the backend resolves the card from
+      // `card_id` before finding the activity, so it is required.
+      inputSchema: { account_id: optionalAccountId, activity_id: activityId, card_id: cardIdInput },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, activity_id }) =>
+    async ({ account_id, activity_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`, {
+          card_id,
+        });
       }),
   );
 
@@ -94,19 +99,23 @@ export const register: RegisterFn = (server, client) => {
         card_id: cardIdInput,
         title: z.string().min(1),
         description: z.string().optional(),
-        type: activityType,
+        // Backend column is `activity_type` (PipelineActivity::ACTIVITY_TYPES).
+        activity_type: activityType,
+        status: z.string().optional().describe("Activity status (e.g. pending, done)"),
+        priority: z.string().optional().describe("low | medium | high"),
         scheduled_at: z.string().describe("ISO8601 scheduled datetime"),
-        duration_minutes: z.number().int().positive().optional(),
-        owner_id: agentUserId.optional(),
-        participant_ids: z.array(z.number().int().positive()).optional(),
-        reminder_minutes_before: z.number().int().nonnegative().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        due_at: z.string().optional().describe("ISO8601 due datetime"),
+        duration: z.number().int().positive().optional().describe("Duration in minutes"),
+        assigned_to_id: agentUserId.optional().describe("Agent the activity is assigned to"),
+        metadata: z.record(z.string(), z.unknown()).optional(),
       },
     },
-    async ({ account_id, ...body }) =>
+    async ({ account_id, card_id, ...activity }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/activities`, body);
+        // Controller reads `card_id` directly and the rest via
+        // `params.require(:activity)`.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activities`, { card_id, activity });
       }),
   );
 
@@ -119,19 +128,27 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         activity_id: activityId,
+        card_id: cardIdInput,
         title: z.string().optional(),
         description: z.string().optional(),
+        activity_type: activityType.optional(),
+        status: z.string().optional(),
+        priority: z.string().optional(),
         scheduled_at: z.string().optional(),
-        duration_minutes: z.number().int().positive().optional(),
-        owner_id: agentUserId.optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        due_at: z.string().optional(),
+        duration: z.number().int().positive().optional().describe("Duration in minutes"),
+        assigned_to_id: agentUserId.optional(),
+        metadata: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { idempotentHint: true },
     },
-    async ({ account_id, activity_id, ...body }) =>
+    async ({ account_id, activity_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`, {
+          card_id,
+          activity: body,
+        });
       }),
   );
 
@@ -140,28 +157,34 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Delete pipeline activity",
       description: "Delete an activity. Use cancel_activity to keep history with cancelled status.",
-      inputSchema: { account_id: accountId, activity_id: activityId },
+      inputSchema: { account_id: accountId, activity_id: activityId, card_id: cardIdInput },
       annotations: { destructiveHint: true },
     },
-    async ({ account_id, activity_id }) =>
+    async ({ account_id, activity_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`);
+        return client.delete(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}`, {
+          card_id,
+        });
       }),
   );
 
   // ── Status transitions ─────────────────────────────────────────────────────
+  // All member actions are card-scoped — `card_id` is required so the backend
+  // can resolve the parent card before finding the activity.
   server.registerTool(
     "start_activity",
     {
       title: "Start activity",
       description: "Mark an activity as in_progress.",
-      inputSchema: { account_id: optionalAccountId, activity_id: activityId },
+      inputSchema: { account_id: optionalAccountId, activity_id: activityId, card_id: cardIdInput },
     },
-    async ({ account_id, activity_id }) =>
+    async ({ account_id, activity_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}/start`);
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activities/${activity_id}/start`, {
+          card_id,
+        });
       }),
   );
 
@@ -173,6 +196,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         activity_id: activityId,
+        card_id: cardIdInput,
         outcome: z.string().optional().describe("Outcome / completion notes"),
       },
     },
@@ -194,6 +218,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         activity_id: activityId,
+        card_id: cardIdInput,
         reason: z.string().optional(),
       },
     },
@@ -215,6 +240,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         activity_id: activityId,
+        card_id: cardIdInput,
         scheduled_at: z.string().describe("New ISO8601 scheduled datetime"),
         reason: z.string().optional(),
       },
@@ -512,27 +538,34 @@ export const register: RegisterFn = (server, client) => {
     "create_activity_template",
     {
       title: "Create activity template",
-      description: "Create a new activity template (blueprint).",
+      description: "Create a new activity template (blueprint for activities).",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
-        type: activityType,
-        title_template: z
+        activity_type: activityType,
+        description: z.string().optional(),
+        category: z.string().optional().describe("Free-form grouping category"),
+        default_content: z
           .string()
-          .describe("Title pattern (supports variables like {{contact.name}})"),
-        description_template: z.string().optional(),
-        default_duration_minutes: z.number().int().positive().optional(),
-        default_offset_minutes: z
+          .optional()
+          .describe("Default activity body/content (supports variables)"),
+        default_duration: z
           .number()
           .int()
+          .positive()
           .optional()
-          .describe("Offset relative to anchor when used in a sequence"),
+          .describe("Default duration in minutes"),
+        active: z.boolean().optional(),
+        default_metadata: z.record(z.string(), z.unknown()).optional(),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/activity_templates`, body);
+        // Controller does `params.require(:pipeline_activity_template)`.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activity_templates`, {
+          pipeline_activity_template: body,
+        });
       }),
   );
 
@@ -545,20 +578,22 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         template_id: templateId,
         name: z.string().optional(),
-        title_template: z.string().optional(),
-        description_template: z.string().optional(),
-        default_duration_minutes: z.number().int().positive().optional(),
-        default_offset_minutes: z.number().int().optional(),
+        activity_type: activityType.optional(),
+        description: z.string().optional(),
+        category: z.string().optional(),
+        default_content: z.string().optional(),
+        default_duration: z.number().int().positive().optional(),
+        active: z.boolean().optional(),
+        default_metadata: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, template_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}`, {
+          pipeline_activity_template: body,
+        });
       }),
   );
 
