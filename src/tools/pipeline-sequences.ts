@@ -81,10 +81,15 @@ export const register: RegisterFn = (server, client) => {
           .describe("Variables for step rendering (e.g., scheduled overrides, custom data)"),
       },
     },
-    async ({ account_id, card_id, ...body }) =>
+    async ({ account_id, card_id, sequence_definition_id, context }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, body);
+        // card_sequences_controller reads `definition_id` (not sequence_definition_id),
+        // and the definition must be an ACTIVE pipeline sequence definition.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, {
+          definition_id: sequence_definition_id,
+          context,
+        });
       }),
   );
 

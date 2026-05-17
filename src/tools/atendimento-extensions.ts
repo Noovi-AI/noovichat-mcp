@@ -235,10 +235,11 @@ export const register: RegisterFn = (server, client) => {
           .min(1)
           .describe("Consent type/scope (e.g., 'marketing_email', 'whatsapp_promo')"),
         granted: z.boolean().describe("Whether the consent is granted at creation time"),
+        // Backend enum: ConsentRecord::SOURCES
         source: z
-          .string()
+          .enum(["agent", "widget", "import", "api", "whatsapp"])
           .optional()
-          .describe("How the consent was collected (form, agent, import, etc.)"),
+          .describe("How the consent was collected (defaults to 'agent')"),
         notes: z.string().optional(),
       },
     },
