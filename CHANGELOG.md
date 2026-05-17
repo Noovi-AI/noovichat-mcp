@@ -5,11 +5,54 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-05-17
+
+### Added
+
+- **`get_automation_catalog`** — discovery tool returning the full
+  pipeline-automation vocabulary: 18 trigger events, 7 condition types and
+  32 cross-feature actions (conversation, contact, pipeline, WhatsApp,
+  Captain AI, Google Calendar, tasks, webhooks) with their parameters.
+- **`build_automation_flow`** — assembles a valid FlowBuilder graph from a
+  simple trigger → conditions → actions description, so an LLM never has to
+  hand-write node/connection JSON.
+- **`inbox_id`** on `create_pipeline` / `update_pipeline` — link a pipeline
+  to an inbox (cards auto-created from that inbox's conversations).
+- Server-level `instructions` so MCP clients understand conventions and the
+  automation workflow on connect.
+
+### Changed
+
+- `create_pipeline_automation` / `update_pipeline_automation` /
+  `validate_automation_flow` now take a structured `flow` schema (typed
+  nodes / connections / viewport) instead of an opaque blob.
+
+### Fixed
+
+Bugs surfaced by a full lifecycle audit against a dev NooviChat instance
+(raised the lifecycle pass rate from 42/50 to 64/65):
+
+- **`extractErrors` ignored Rails-style error hashes** (`{errors:{field:[…]}}`)
+  — every field validation collapsed into a generic "422". Now flattened;
+  HTML exception pages are trimmed to their headline.
+- **HTTP 204 responses produced an invalid MCP result** — `JSON.stringify`
+  of `undefined` broke the result envelope for delete/cancel endpoints.
+- **lead-scoring** used `score`/`active`; backend uses `points`/`enabled`
+  (silently dropped on create, broke update).
+- **`create_followup_automation`** schema rewritten to the real contract
+  (`trigger_type`, `follow_up_template_id`, `delay_minutes`, …).
+- **`create_pipeline_automation`** missing request wrapper; `flow_definition`
+  renamed to `flow`, `enabled` to `active`.
+- **`create_followup_template_item`** missing required `item_type`;
+  `delay_hours` → `delay_seconds`.
+- **broadcasts** `source_type` / `message_type` enums corrected;
+  `update_broadcast` no longer forces `name`.
+
 ## [0.2.1] - 2026-05-07
 
 ### Fixed
 
-Bugs surfaced by a 272-tool batch audit against `chat.dev.nooviai.com`:
+Bugs surfaced by a 272-tool batch audit against a dev NooviChat instance:
 
 - **`stageId` schema was `z.number()` but Chatwoot stage IDs are strings**
   (e.g. `"3321_qualificado"`). Broke `list_cards`, `move_card_to_stage`,
@@ -70,7 +113,7 @@ Chatwoot-side issues, tracked separately and beyond this MCP release.
 
 ### Validated
 
-- Smoke tests against `chat.dev.nooviai.com` confirm 31+ list/get tools
+- Smoke tests against a dev NooviChat instance confirm 31+ list/get tools
   responding correctly (the few HTTP 5xx are pre-existing Chatwoot bugs
   unrelated to this release).
 

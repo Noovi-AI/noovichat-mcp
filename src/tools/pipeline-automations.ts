@@ -32,7 +32,17 @@
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
+  ACTIONS,
+  CONDITIONS,
+  NODE_CATEGORIES,
+  TRIGGERS,
+  actionTypeEnum,
+  conditionTypeEnum,
+  triggerEventTypeEnum,
+} from "./_automation-catalog.js";
+import {
   accountId,
+  jsonText,
   optionalAccountId,
   pagination,
   resolveAccountId,
@@ -43,15 +53,54 @@ const automationId = z.number().int().positive().describe("Pipeline automation I
 const templateId = z.number().int().positive().describe("Automation template ID");
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
 
-// Backend column is `flow` (a JSON object with `nodes`/`edges`). When `flow`
-// has nodes the automation is "flow-based" and the backend skips the
-// trigger/actions presence validation. Was wrongly named `flow_definition`.
+/* -------------------------------------------------------------------------- */
+/* Flow schema (backend column `flow`)                                        */
+/*                                                                            */
+/* A flow is { nodes, connections, viewport }. Nodes are typed (trigger /      */
+/* condition / action / loop / split / annotation); `data` carries the         */
+/* granular vocabulary (event_type for triggers, action/condition type +       */
+/* params). `data` stays a permissive record so a flow read via                */
+/* get_pipeline_automation round-trips cleanly through update. To build a       */
+/* flow from intent, prefer the `build_automation_flow` tool.                   */
+/* -------------------------------------------------------------------------- */
+const flowNode = z
+  .object({
+    id: z.string().describe("Unique node id within the flow"),
+    type: z.string().describe(`Node category: ${NODE_CATEGORIES.join(" | ")}`),
+    position: z
+      .object({ x: z.number(), y: z.number() })
+      .passthrough()
+      .optional()
+      .describe("Canvas position (FlowBuilder)"),
+    data: z
+      .record(z.string(), z.unknown())
+      .describe(
+        "Node payload. trigger → { type: 'event', event_type }; " +
+          "action → { type: <action>, params }; condition → { type: <condition>, params }. " +
+          "Call get_automation_catalog for the full vocabulary.",
+      ),
+  })
+  .passthrough();
+
 const flowObject = z
-  .record(z.string(), z.unknown())
-  .describe(
-    "Flow object — must contain a `nodes` array (and usually `edges`). " +
-      "Shape mirrors the FlowBuilder UI; e.g. { nodes: [...], edges: [...] }.",
-  );
+  .object({
+    nodes: z.array(flowNode).describe("Flow nodes — at least one trigger node"),
+    connections: z
+      .array(
+        z
+          .object({
+            id: z.string(),
+            source: z.string().describe("Source node id"),
+            target: z.string().describe("Target node id"),
+          })
+          .passthrough(),
+      )
+      .optional()
+      .describe("Directed edges between nodes"),
+    viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number() }).passthrough().optional(),
+  })
+  .passthrough()
+  .describe("FlowBuilder graph. Build it with build_automation_flow when possible.");
 
 // Backend enum: PipelineAutomation::TRIGGER_TYPES
 const automationTriggerType = z
@@ -576,5 +625,131 @@ export const register: RegisterFn = (server, client) => {
           body,
         );
       }),
+  );
+
+  /* ── Cross-feature helpers ──────────────────────────────────────────────────
+   * The automation engine has no metadata endpoint, so the MCP ships the
+   * trigger/condition/action vocabulary statically (see _automation-catalog.ts)
+   * and offers a builder so an LLM never has to assemble raw node graphs.
+   * ------------------------------------------------------------------------- */
+
+  server.registerTool(
+    "get_automation_catalog",
+    {
+      title: "Get the pipeline-automation catalog",
+      description:
+        "Discover everything a pipeline automation can react to and do: every " +
+        "trigger event, condition type and cross-feature action (conversation, " +
+        "contact, pipeline, WhatsApp, Captain AI, Google Calendar, tasks, " +
+        "webhooks) with their parameters. Call this BEFORE building a flow so " +
+        "you use valid trigger/action/condition names.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async () =>
+      jsonText({
+        node_categories: NODE_CATEGORIES,
+        triggers: TRIGGERS,
+        conditions: CONDITIONS,
+        actions: ACTIONS,
+        usage:
+          "Build a flow with build_automation_flow, then pass the result as " +
+          "`flow` to create_pipeline_automation (trigger_type: 'event').",
+      }),
+  );
+
+  server.registerTool(
+    "build_automation_flow",
+    {
+      title: "Build a pipeline-automation flow from intent",
+      description:
+        "Assemble a valid FlowBuilder graph (nodes + connections) from a simple " +
+        "trigger → conditions → actions description. Returns a `flow` object " +
+        "ready to pass to create_pipeline_automation. Use get_automation_catalog " +
+        "first to pick valid names. This avoids hand-writing node graphs.",
+      inputSchema: {
+        trigger: z
+          .object({
+            event_type: triggerEventTypeEnum,
+            config: z
+              .record(z.string(), z.unknown())
+              .optional()
+              .describe("Optional trigger config (e.g. schedule cron, webhook filters)"),
+          })
+          .describe("The event that starts the flow"),
+        conditions: z
+          .array(
+            z.object({
+              type: conditionTypeEnum,
+              params: z
+                .record(z.string(), z.unknown())
+                .optional()
+                .describe("Condition params — see get_automation_catalog"),
+            }),
+          )
+          .optional()
+          .describe("Optional conditions, evaluated in order between trigger and actions"),
+        actions: z
+          .array(
+            z.object({
+              type: actionTypeEnum,
+              params: z
+                .record(z.string(), z.unknown())
+                .optional()
+                .describe("Action params — see get_automation_catalog"),
+            }),
+          )
+          .min(1)
+          .describe("One or more actions, run in order"),
+      },
+      annotations: { readOnlyHint: true, idempotentHint: true },
+    },
+    async ({ trigger, conditions, actions }) => {
+      const nodes: Array<Record<string, unknown>> = [];
+      const connections: Array<Record<string, string>> = [];
+      let x = 80;
+      const step = () => {
+        const pos = { x, y: 80 };
+        x += 240;
+        return pos;
+      };
+
+      nodes.push({
+        id: "trigger-1",
+        type: "trigger",
+        position: step(),
+        data: { type: "event", event_type: trigger.event_type, ...(trigger.config ?? {}) },
+      });
+      let prev = "trigger-1";
+
+      (conditions ?? []).forEach((c, i) => {
+        const id = `condition-${i + 1}`;
+        nodes.push({
+          id,
+          type: "condition",
+          position: step(),
+          data: { type: c.type, params: c.params ?? {} },
+        });
+        connections.push({ id: `c-${connections.length + 1}`, source: prev, target: id });
+        prev = id;
+      });
+
+      actions.forEach((a, i) => {
+        const id = `action-${i + 1}`;
+        nodes.push({
+          id,
+          type: "action",
+          position: step(),
+          data: { type: a.type, params: a.params ?? {} },
+        });
+        connections.push({ id: `c-${connections.length + 1}`, source: prev, target: id });
+        prev = id;
+      });
+
+      return jsonText({
+        flow: { nodes, connections, viewport: { x: 0, y: 0, zoom: 1 } },
+        next_step: "Pass this `flow` to create_pipeline_automation with trigger_type: 'event'.",
+      });
+    },
   );
 };
