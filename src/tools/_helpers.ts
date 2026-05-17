@@ -74,7 +74,9 @@ export function jsonText(value: unknown): {
     content: [
       {
         type: "text",
-        text: JSON.stringify(value, null, 2),
+        // Guard against `undefined` (e.g. 204 responses): JSON.stringify(undefined)
+        // returns `undefined`, not a string, which makes the MCP result invalid.
+        text: JSON.stringify(value === undefined ? { success: true } : value, null, 2),
       },
     ],
   };

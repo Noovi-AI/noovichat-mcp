@@ -122,7 +122,9 @@ export class NooviChatClient {
     }
 
     if (response.status === 204) {
-      return undefined as T;
+      // 204 No Content — return a serializable sentinel. Returning `undefined`
+      // breaks the MCP result envelope (JSON.stringify(undefined) is not a string).
+      return { success: true } as T;
     }
 
     const contentType = response.headers.get("content-type") ?? "";
@@ -140,13 +142,34 @@ export class NooviChatClient {
 
   private extractErrors(data: unknown): string[] {
     if (!data) return [];
-    if (typeof data === "string") return [data];
+    if (typeof data === "string") {
+      // Rails renders unhandled exceptions as a full HTML page. Surface only
+      // the exception headline instead of dumping the whole document.
+      if (/<!DOCTYPE|<html/i.test(data)) {
+        const m = data.match(/<h2>([^<]+)<\/h2>|<title>([^<]+)<\/title>/i);
+        return [(m?.[1] ?? m?.[2] ?? "Server error (HTML response)").trim()];
+      }
+      return [data];
+    }
     if (typeof data !== "object") return [];
 
     const obj = data as Record<string, unknown>;
 
     if (Array.isArray(obj.errors)) {
       return obj.errors.map((e) => (typeof e === "string" ? e : JSON.stringify(e)));
+    }
+    // Rails-style validation hash: { errors: { field: ["msg", ...] } }
+    if (obj.errors && typeof obj.errors === "object") {
+      const flat: string[] = [];
+      for (const [field, msgs] of Object.entries(obj.errors as Record<string, unknown>)) {
+        if (Array.isArray(msgs)) {
+          for (const m of msgs)
+            flat.push(`${field}: ${typeof m === "string" ? m : JSON.stringify(m)}`);
+        } else if (typeof msgs === "string") {
+          flat.push(`${field}: ${msgs}`);
+        }
+      }
+      if (flat.length) return flat;
     }
     if (typeof obj.error === "string") return [obj.error];
     if (typeof obj.message === "string") return [obj.message];

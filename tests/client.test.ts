@@ -78,7 +78,7 @@ describe("NooviChatClient", () => {
     expect(url.searchParams.getAll("tag_ids[]")).toEqual(["a", "b"]);
   });
 
-  it("returns undefined for 204 responses", async () => {
+  it("returns a serializable sentinel for 204 responses", async () => {
     globalThis.fetch = vi.fn(
       async () => new Response(null, { status: 204 }),
     ) as unknown as typeof globalThis.fetch;
@@ -88,7 +88,8 @@ describe("NooviChatClient", () => {
       apiToken: "tok",
     });
     const result = await client.delete("/api/v1/accounts/1/contacts/42");
-    expect(result).toBeUndefined();
+    // Must NOT be undefined — JSON.stringify(undefined) breaks the MCP result envelope.
+    expect(result).toEqual({ success: true });
   });
 
   it("throws NooviChatApiError on non-2xx with parsed errors", async () => {
@@ -113,6 +114,59 @@ describe("NooviChatClient", () => {
       status: 422,
       errors: ["Title can't be blank"],
       path: "/api/v1/accounts/1/pipeline_cards",
+    });
+  });
+
+  it("flattens Rails-style `errors` hash (field -> messages)", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            errors: { name: ["has already been taken"], points: ["is not a number"] },
+          }),
+          {
+            status: 422,
+            statusText: "Unprocessable Entity",
+            headers: { "content-type": "application/json" },
+          },
+        ),
+    ) as unknown as typeof globalThis.fetch;
+
+    const client = new NooviChatClient({
+      baseUrl: "https://chat.example.com",
+      apiToken: "tok",
+    });
+
+    await expect(
+      client.post("/api/v1/accounts/1/pipelines", { name: "dup" }),
+    ).rejects.toMatchObject({
+      name: "NooviChatApiError",
+      status: 422,
+      errors: ["name: has already been taken", "points: is not a number"],
+    });
+  });
+
+  it("surfaces only the headline from an HTML error page", async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          "<!DOCTYPE html><html><head><title>Action Controller: Exception caught</title></head><body><h2>No route matches [POST] &quot;/x&quot;</h2></body></html>",
+          {
+            status: 500,
+            statusText: "Internal Server Error",
+            headers: { "content-type": "text/html" },
+          },
+        ),
+    ) as unknown as typeof globalThis.fetch;
+
+    const client = new NooviChatClient({
+      baseUrl: "https://chat.example.com",
+      apiToken: "tok",
+    });
+
+    await expect(client.post("/x", {})).rejects.toMatchObject({
+      name: "NooviChatApiError",
+      status: 500,
     });
   });
 
