@@ -323,10 +323,14 @@ export const register: RegisterFn = (server, client) => {
         owner_id: agentUserId.nullable(),
       },
     },
-    async ({ account_id, ...body }) =>
+    async ({ account_id, card_ids, owner_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/bulk_assign`, body);
+        // owners#bulk_assign reads `item_ids` (not `card_ids`).
+        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/bulk_assign`, {
+          item_ids: card_ids,
+          owner_id,
+        });
       }),
   );
 

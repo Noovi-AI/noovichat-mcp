@@ -395,13 +395,19 @@ export const register: RegisterFn = (server, client) => {
         active: z.boolean().optional(),
         steps: z
           .array(z.record(z.string(), z.unknown()))
-          .describe("Ordered step definitions (template_id, offset_minutes, etc.)"),
+          .describe(
+            "Ordered step definitions. Each step: { step_number, activity_type, " +
+              "title, description?, delay_days?, delay_hours?, duration?, assign_to? }.",
+          ),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline/activity_sequences`, body);
+        // Controller does `params.require(:pipeline_activity_sequence)`.
+        return client.post(`/api/v1/accounts/${acc}/pipeline/activity_sequences`, {
+          pipeline_activity_sequence: body,
+        });
       }),
   );
 
@@ -423,10 +429,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, sequence_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(
-          `/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`,
-          body,
-        );
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/activity_sequences/${sequence_id}`, {
+          pipeline_activity_sequence: body,
+        });
       }),
   );
 
