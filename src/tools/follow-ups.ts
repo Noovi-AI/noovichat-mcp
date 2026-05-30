@@ -19,6 +19,12 @@
  *     collection: GET summary, GET by_user, GET by_template, GET export
  *
  * `ScheduledMessage` is a backward-compat alias of `FollowUp` — same routes.
+ *
+ * Backend change 2026-05-30 (Chatwoot audit MT-02): the conversation-scoped
+ * index and count now apply policy_scope. A non-admin agent token therefore only
+ * sees/counts ITS OWN follow-ups on a conversation; an administrator token sees
+ * all. The account-level index (list_followups) was already scoped this way.
+ * Response shapes are unchanged — no breaking contract change, so no version bump.
  */
 
 import { z } from "zod";
@@ -200,7 +206,8 @@ export const register: RegisterFn = (server, client) => {
     "count_conversation_followups",
     {
       title: "Count follow-ups in a conversation",
-      description: "Lightweight count of follow-ups for a conversation (for badges).",
+      description:
+        "Lightweight count of follow-ups for a conversation (for badges). Scoped to the API token user unless they are an account admin (Chatwoot MT-02, 2026-05-30).",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
