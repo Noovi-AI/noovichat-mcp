@@ -29,7 +29,16 @@
       "Write",
       "Edit",
       "Grep",
-      "Glob"
+      "Glob",
+      "Bash(git show:*)",
+      "Bash(git tag:*)",
+      "Bash(git switch:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(jq:*)",
+      "Bash(mkdir:*)",
+      "Bash(pnpm version:*)",
+      "Bash(pnpm publish:*)"
     ],
     "deny": [
       "Bash(rm -rf /:*)",
