@@ -106,6 +106,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         status: broadcastStatus.optional(),
+        q: z.string().optional().describe("Partial name match (ILIKE %q%)"),
         ...pagination,
       },
       annotations: { readOnlyHint: true },
@@ -141,6 +142,11 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         broadcast_id: broadcastId,
+        status: z
+          .enum(["pending", "sending", "sent", "failed", "replied", "blacklisted", "skipped"])
+          .optional()
+          .describe("Filter contacts by delivery status"),
+        q: z.string().optional().describe("Partial phone or name match (ILIKE %q%)"),
         ...pagination,
       },
       annotations: { readOnlyHint: true },
