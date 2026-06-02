@@ -25,7 +25,7 @@ app**. This package only translates between MCP tool calls and REST calls.
 6. **Atomic commit** — Conventional Commits, one logical unit. `pnpm version` bump when releasing.
 7. **⛔ Close the cycle — update Obsidian docs (`/doc-obsidian`) — MANDATORY, NEVER skip.** Update the canonical technical docs in the Obsidian vault for anything that changed (tools, resources, API mirroring). Obsidian is the single source of truth (see `../docs/rules/obsidian.md`). Vault: `/home/debian/projects/Obsidian/NooviAI/NooviChat/NooviChat-MCP/`; commit/push from the external repo `/home/debian/projects/Obsidian` (`git add` explicit, never `-A`; `git push origin main`). If nothing documentable changed, state that and skip — but always ask.
 
-**`pnpm publish` is NOT part of the loop** — it needs human approval + golden rules (gated by the root pre-deploy-gate hook). The Obsidian doc update (step 7) IS part of the loop and closes it.
+**`pnpm publish` is NOT part of the loop** — run `/pre-publish-audit` first; it needs human approval + golden rules (gated by the root pre-deploy-gate hook). The Obsidian doc update (step 7) IS part of the loop and closes it.
 
 ## Stack
 
