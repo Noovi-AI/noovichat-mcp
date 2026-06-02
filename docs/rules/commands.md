@@ -80,7 +80,7 @@ git push --follow-tags
 ```
 
 > **Reminder:** publishing is a deploy gate. See root
-> `.claude/rules/deploy-safety.md` and `.claude/rules/release-cadence.md`.
+> `docs/rules/deploy-safety.md` and `docs/rules/release-cadence.md`.
 > Working tree must be clean, not in business hours BR.
 
 ## Adding a new tool

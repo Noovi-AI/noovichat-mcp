@@ -106,7 +106,7 @@ When the Rails API changes:
 - A renamed endpoint → mandatory update here (and in n8n node)
 - A removed endpoint → tool deprecated here
 
-The same checklist as `Chatwoot/.claude/rules/n8n-sync.md` applies. Until a
+The same checklist as `Chatwoot/docs/rules/n8n-sync.md` applies. Until a
 parallel `mcp-sync.md` is written in the Chatwoot repo, treat n8n-sync.md as
 authoritative for both consumers.
 

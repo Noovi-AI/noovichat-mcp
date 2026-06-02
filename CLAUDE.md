@@ -138,7 +138,7 @@ If a backend route changed:
 
 ## Deploy / publish
 
-`npm publish` is a deploy gate (see root `.claude/rules/deploy-safety.md`).
+`npm publish` is a deploy gate (see root `docs/rules/deploy-safety.md`).
 Once published, every client that runs `npx -y @nooviai/noovichat-mcp`
 gets it on next invocation. **Never publish during business hours BR** (Seg-Sex 08-19h BRT).
 
