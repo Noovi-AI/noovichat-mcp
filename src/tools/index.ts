@@ -41,7 +41,7 @@ import { register as registerGoogleCalendar } from "./google-calendar.js";
 
 import { register as registerAudio } from "./audio.js";
 import { register as registerCaptainHook } from "./captain-hook.js";
-import { register as registerNooviLabs } from "./noovi-labs.js";
+import { register as registerFlowBuilder } from "./flow-builder.js";
 // ── Admin / diagnostic ────────────────────────────────────────────────────────
 // NOTE: the NooviChat licensing/DRM system is deliberately NOT exposed as MCP
 // tools — it is a product-protection boundary and must not be readable or
@@ -66,7 +66,7 @@ const registrations = [
   registerInternalChat,
   registerAtendimentoExt,
   registerGoogleCalendar,
-  registerNooviLabs,
+  registerFlowBuilder,
   registerWhitelabel,
   registerCaptainHook,
   registerAudio,
