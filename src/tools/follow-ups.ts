@@ -74,6 +74,27 @@ export const register: RegisterFn = (server, client) => {
       }),
   );
 
+  // NooviChat fase-11: global search over follow-ups (title + content).
+  server.registerTool(
+    "search_followups",
+    {
+      title: "Search follow-ups",
+      description:
+        "Full-text search over follow-ups across the account (matches title and content). Scoped to the caller: admins see all, agents see their own.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        q: z.string().min(1).describe("Search query (matches follow-up title/content)"),
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/search/follow_ups`, params);
+      }),
+  );
+
   server.registerTool(
     "get_followup",
     {
