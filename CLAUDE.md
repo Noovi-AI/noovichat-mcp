@@ -27,6 +27,17 @@ app**. This package only translates between MCP tool calls and REST calls.
 
 **`pnpm publish` is NOT part of the loop** — run `/pre-publish-audit` first; it needs human approval + golden rules (gated by the root pre-deploy-gate hook). The Obsidian doc update (step 7) IS part of the loop and closes it.
 
+### Mandatory tests (even in MVP)
+
+MVP philosophy allows skipping tests for speed — but tests are REQUIRED, no exception, for:
+1. **New tool / changed route or schema** — any `src/tools/*.ts` add/change → vitest that the tool registers and hits the correct route with the right params (api-sync).
+2. **Account scoping** — any handler using `resolveAccountId`/`accountId` → test that destructive tools require an explicit `accountId` and reads fall back to env.
+3. **Destructive annotations** — any tool marked `destructiveHint` (delete/cancel/permanent) → test it is annotated correctly.
+4. **Error handling** — any change to `safeHandler`/`_helpers` → test the `{error,status,path,errors}` shape.
+5. **Bug-report fixes** — any fix from a reported broken tool → regression test in the same commit.
+
+When in doubt, add the test. A published broken version cannot be removed and breaks every MCP host on next session.
+
 ## Stack
 
 | Layer | Choice |
