@@ -7,7 +7,7 @@
 ## What this project is
 
 A [Model Context Protocol](https://modelcontextprotocol.io/) server (TypeScript
-+ Node 20+) that wraps the NooviChat REST API and exposes ~138 tools to MCP
++ Node 20+) that wraps the NooviChat REST API and exposes ~276 tools to MCP
 hosts (Claude Desktop / Claude Code / Cursor / VS Code).
 
 It's a thin HTTP wrapper — **all business logic lives in the NooviChat Rails
