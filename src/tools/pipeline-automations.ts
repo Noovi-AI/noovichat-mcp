@@ -469,10 +469,14 @@ export const register: RegisterFn = (server, client) => {
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, ...params }) =>
+    async ({ account_id, action, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/pipeline/automations/all_audit_logs`, params);
+        // Backend expects `audit_action` — `action` collides with the Rails
+        // routing param (the endpoint always returned [] before the v4.14
+        // fix). The tool input keeps the friendly `action` name.
+        const query = action ? { ...params, audit_action: action } : params;
+        return client.get(`/api/v1/accounts/${acc}/pipeline/automations/all_audit_logs`, query);
       }),
   );
 
