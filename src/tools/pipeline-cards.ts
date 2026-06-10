@@ -38,6 +38,31 @@ const dealQualification = z
 
 const cardPriority = z.enum(["low", "medium", "high", "urgent"]).describe("Card priority");
 
+/**
+ * Shared advanced filter fragments accepted by the cards index AND the CSV
+ * export endpoint (both backed by the PipelineCardFilterable concern). All
+ * optional; passed straight through as query params.
+ */
+const cardFilters = {
+  labels: z
+    .array(z.string())
+    .optional()
+    .describe("Filter by conversation label titles (OR — matches any)"),
+  value_min: z.number().optional().describe("Minimum expected_revenue/value"),
+  value_max: z.number().optional().describe("Maximum expected_revenue/value"),
+  agent_id: z
+    .union([z.number().int(), z.string()])
+    .optional()
+    .describe("Owner agent ID. Use -1 or 'unassigned' for cards with no owner."),
+  date_start: z.string().optional().describe("Created-at range start (YYYY-MM-DD)"),
+  date_end: z.string().optional().describe("Created-at range end (YYYY-MM-DD)"),
+  sla_exceeded: z.boolean().optional().describe("Only cards whose SLA is overdue"),
+  stages: z
+    .array(z.string())
+    .optional()
+    .describe('Filter by one or more stage IDs (e.g. ["3321_lead", "3321_qualificado"])'),
+};
+
 export const register: RegisterFn = (server, client) => {
   // ── List & filter ──────────────────────────────────────────────────────────
   server.registerTool(
@@ -55,6 +80,7 @@ export const register: RegisterFn = (server, client) => {
         status: z.enum(["open", "won", "lost"]).optional(),
         contact_id: z.number().int().positive().optional(),
         priority: cardPriority.optional(),
+        ...cardFilters,
         ...pagination,
       },
       annotations: { readOnlyHint: true },
@@ -103,6 +129,47 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.get(`/api/v1/accounts/${acc}/pipeline/cards/discarded`, params);
+      }),
+  );
+
+  // ── CSV export / import template ───────────────────────────────────────────
+  server.registerTool(
+    "export_cards",
+    {
+      title: "Export pipeline cards to CSV",
+      description:
+        "Export cards as a CSV file (text/csv, returned as a raw string). Accepts the same filters as list_cards (pipeline, stage, labels, status, priority, value range, agent, created-at range, SLA). Use this for spreadsheet/report extracts.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineIdInput.optional(),
+        stage_id: stageId.optional(),
+        contact_id: z.number().int().positive().optional(),
+        status: z.enum(["open", "won", "lost", "closed"]).optional(),
+        priority: cardPriority.optional(),
+        ...cardFilters,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/export`, params);
+      }),
+  );
+
+  server.registerTool(
+    "get_import_template",
+    {
+      title: "Get pipeline card import CSV template",
+      description:
+        "Return the CSV template (text/csv, raw string) for bulk-importing cards. Columns: title (required), stage, description, expected_revenue, contact_identifier, contact_email, contact_phone. Fill it and upload via the dashboard import (MCP multipart upload is not yet supported).",
+      inputSchema: { account_id: accountId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/template`);
       }),
   );
 
