@@ -28,9 +28,10 @@ import { register as registerUazapi } from "./uazapi.js";
 import { register as registerWaha } from "./waha.js";
 import { register as registerWhatsappTemplates } from "./whatsapp-templates.js";
 
+// ── CRM & lead management ─────────────────────────────────────────────────────
+import { register as registerCommercialAnalyses } from "./commercial-analyses.js";
 import { register as registerCompanies } from "./companies.js";
 import { register as registerInternalChat } from "./internal-chat.js";
-// ── CRM & lead management ─────────────────────────────────────────────────────
 import { register as registerLeadScoring } from "./lead-scoring.js";
 
 // ── Atendimento extensions (Cat A) ────────────────────────────────────────────
@@ -62,6 +63,7 @@ const registrations = [
   registerWaha,
   registerUazapi,
   registerLeadScoring,
+  registerCommercialAnalyses,
   registerCompanies,
   registerInternalChat,
   registerAtendimentoExt,

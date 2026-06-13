@@ -5,6 +5,19 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-13
+
+### Added
+
+- **Commercial Analysis** tools (`/api/v1/accounts/:id/commercial-analyses`):
+  `list_commercial_analyses`, `generate_commercial_analysis` (async — returns
+  202 with a report id, or the cached report with `cache_hit`),
+  `get_commercial_analysis_status` (poll), `get_commercial_analysis` (full
+  9-section report) and `delete_commercial_analysis`. Closes the downstream
+  parity gap surfaced by the API-docs audit (2026-06-13). The PDF export is
+  intentionally not exposed as a tool (binary payload, not LLM-consumable).
+  Requires the `commercial_analysis` feature flag (403 surfaced verbatim).
+
 ## [0.3.1] - 2026-05-17
 
 ### Security
