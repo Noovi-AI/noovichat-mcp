@@ -18,8 +18,8 @@ instance using natural language. Ask Claude to "move card #42 to the
 Negotiation stage" or "list all follow-ups scheduled for tomorrow" and the
 model uses these tools to get it done.
 
-The server wraps the NooviChat REST API and exposes **276 tools across
-23 feature modules** — every customization the NooviChat platform adds on
+The server wraps the NooviChat REST API and exposes a broad tool catalog across
+the NooviChat feature modules — every customization the NooviChat platform adds on
 top of Chatwoot, plus the most useful Chatwoot-native operations needed
 for them to work end-to-end.
 
@@ -46,7 +46,7 @@ for them to work end-to-end.
 | **Captain AI hook** | 7 | Preferences + 5 synchronous AI tasks (rewrite, summarize, reply, label, follow-up) |
 | **Whitelabel (super_admin)** | 16 | Branding, AI providers, scripts, audit logs, backups |
 | **NooviLabs / Audio** | 0 (today) | No public API today; implementation notes stay out of roadmap source |
-| **Total** | **276** | Real count of `server.tool()` registrations in `src/tools/*.ts` (23 modules) |
+| **Total** | Generated from source | Count tool registrations during release instead of hardcoding a number |
 
 ## Install
 
@@ -75,7 +75,7 @@ Claude Code settings:
 }
 ```
 
-Restart the MCP host. The 276 tools become available to the model.
+Restart the MCP host. The NooviChat MCP tools become available to the model.
 
 ### Cursor / VS Code (Continue)
 
@@ -119,10 +119,7 @@ The model picks the right tools, fills the parameters, and calls them.
 
 ## Available tools
 
-A full inventory is generated from the source — see
-[TOOLS.md](docs/TOOLS.md) (auto-generated, not committed yet).
-
-To browse them grouped by feature area, look at
+The inventory is generated from the source during release. To browse tools grouped by feature area, look at
 [`src/tools/`](src/tools/) — each file is one resource.
 
 ## Development
