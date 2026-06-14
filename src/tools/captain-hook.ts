@@ -1,14 +1,13 @@
 /**
  * Captain AI — NooviChat-side hook surface only.
  *
- * Captain AI's core (assistants, copilot, documents, scenarios, custom_tools,
- * bulk_actions) is upstream Chatwoot Enterprise and intentionally OUT OF SCOPE
- * for the NooviChat MCP. We expose only the two pieces that NooviChat itself
- * owns:
+ * This module exposes only the NooviChat Captain hook surface. Do not expose
+ * or document Chatwoot Enterprise internals as part of the NooviChat MCP.
+ * We expose only the two pieces that NooviChat itself owns:
  *
- *   1. The account-level Captain "preferences" controller — feature flags
- *      and per-feature model selection (custom NooviChat customization on
- *      top of upstream's `account.captain_preferences`).
+ *   1. The account-level Captain "preferences" controller — operational
+ *      switches and per-feature model selection (custom NooviChat
+ *      customization on top of `account.captain_preferences`).
  *   2. The "tasks" controller — five immediate-execution AI operations
  *      (rewrite, summarize, reply suggestion, label suggestion, follow-up).
  *      This is a custom NooviChat controller, not the upstream Captain
@@ -24,9 +23,10 @@
  *   POST   /api/v1/accounts/:account_id/captain/tasks/label_suggestion
  *   POST   /api/v1/accounts/:account_id/captain/tasks/follow_up
  *
- * Authorization: every endpoint requires `captain_ai` feature flag enabled
- * via `require_feature!('captain_ai')` and the operating user must have a
- * valid Pundit policy for `captain/tasks` / Account update for preferences.
+ * Authorization: every endpoint requires the account to be operationally
+ * authorized for `captain_ai` via `require_feature!('captain_ai')`, and the
+ * operating user must have a valid Pundit policy for `captain/tasks` /
+ * Account update for preferences.
  *
  * NOT registered here (and why):
  *   - pipeline_run_captain_ai → there is no direct REST endpoint for this.

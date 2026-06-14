@@ -209,12 +209,12 @@ during business hours BR (Mon-Fri 08-19h BRT).
 
 ## License
 
-[MIT](LICENSE) — Copyright (c) 2026 Noovi.AI.
+[MIT](LICENSE) — Copyright (c) 2026 Noovi.
 
 This project is forked from [`fazer-ai/mcp-chatwoot`](https://github.com/fazer-ai/mcp-chatwoot)
 under MIT. The original copyright notice is preserved in [LICENSE](LICENSE).
 
-## Related Noovi.AI projects
+## Related Noovi projects
 
 - [`@nooviai/n8n-nodes-noovichat`](https://www.npmjs.com/package/@nooviai/n8n-nodes-noovichat)
   — n8n community node (REST consumer, similar surface)

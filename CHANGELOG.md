@@ -16,16 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   9-section report) and `delete_commercial_analysis`. Closes the downstream
   parity gap surfaced by the API-docs audit (2026-06-13). The PDF export is
   intentionally not exposed as a tool (binary payload, not LLM-consumable).
-  Requires the `commercial_analysis` feature flag (403 surfaced verbatim).
+  Requires operational authorization on the NooviChat license/account; a 403 is
+  surfaced verbatim when the account is not currently authorized.
 
 ## [0.3.1] - 2026-05-17
 
 ### Security
 
-- Removed the `noovi-license` module. The NooviChat licensing/DRM system is
-  a product-protection boundary and must never be readable or mutable by API
-  clients or LLMs. The module registered no tools but carried a roadmap to
-  expose them — removed entirely.
+- Removed the `noovi-license` module. The NooviChat licensing and operational
+  authorization boundary must never be readable or mutable by API clients or
+  LLMs. The module registered no tools but carried a roadmap to expose them —
+  removed entirely.
 
 ### Fixed
 
@@ -152,8 +153,8 @@ Chatwoot-side issues, tracked separately and beyond this MCP release.
 - `tools/pipelines.ts` JSDoc adds the stages-format guidance and the
   rationale for read-modify-write semantics.
 - `tools/pipeline-sequences.ts` JSDoc warns that all endpoints return
-  HTTP 403 when the per-account `pipeline_sequences` feature flag is
-  disabled (Chatwoot v4.13.0.34 SuperAdmin setting).
+  HTTP 403 when the account is not operationally authorized for
+  `pipeline_sequences` (Chatwoot v4.13.0.34 SuperAdmin setting).
 - `tools/pipeline-webhooks.ts` JSDoc warns about the SsrfProtection
   rejecting URLs resolving to private/internal IPs with HTTP 422.
 

@@ -9,7 +9,7 @@
  *   - app/javascript/dashboard/routes/dashboard/pipeline/FlowBuilderView.vue
  *   - .../pipeline/automations/FlowBuilder.vue
  *   - .../pipeline/components/PipelineAutomationsFlowBuilder.vue
- * Gated by the `flow_builder` feature flag (config/features.yml).
+ * Requires operational enablement through `flow_builder` (config/features.yml).
  *
  * The canvas persists its flows as **pipeline automations**. That REST surface
  * (CRUD on automations + executions) is ALREADY exposed by the

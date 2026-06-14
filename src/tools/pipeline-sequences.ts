@@ -12,10 +12,10 @@
  * Sequences are time-triggered cadences (multi-step WhatsApp/webhook/activity
  * flows). Distinct from pipeline_automations, which are event-triggered.
  *
- * ⚠️  FEATURE FLAG (since v4.13.0.34, 2026-05-07):
- * The `pipeline_sequences` feature flag is independent of `pipeline_board` and
- * gerenciado por SuperAdmin per-account. When the feature is OFF, ALL endpoints
- * in this module return HTTP 403 with body:
+ * ⚠️  OPERATIONAL ENABLEMENT (since v4.13.0.34, 2026-05-07):
+ * `pipeline_sequences` is independent of `pipeline_board` and is managed by
+ * SuperAdmin per account as an operational license state, not a plan tier.
+ * When the capability is not enabled, ALL endpoints in this module return HTTP 403 with body:
  *   { "error": "Pipeline Sequences feature is not enabled for this account" }
  *
  * Tools below surface that 403 verbatim through `safeHandler` so the LLM /

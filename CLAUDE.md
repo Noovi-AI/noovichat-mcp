@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # NooviChat-MCP — Project instructions for Claude
 
 > When developed inside the NooviChat monorepo, this is a subproject —
@@ -20,7 +22,7 @@ app**. This package only translates between MCP tool calls and REST calls.
 1. **Recon** — map before editing; read `docs/rules/architecture.md` and the existing `src/tools/<resource>.ts` you are touching. Synthesize a root-cause diagnosis.
 2. **Implement** — match surrounding style: one resource per `src/tools/*.ts` with a `register: RegisterFn`, zod input schemas, JDoc route paths, aggregator in `src/tools/index.ts`. Reference `src/tools/pipeline-cards.ts`. Minimal cohesive change per iteration.
 3. **Review (fail-closed gate)** before commit: `pnpm check` (typecheck + lint via Biome + vitest), 0 errors.
-4. **Test** — MCP stdio smoke: build (`pnpm build`) and exercise the changed tool against a real Chatwoot instance (or via the MCP host).
+4. **Test** — MCP stdio smoke: build (`pnpm build`) and exercise the changed tool against a real NooviChat instance (or via the MCP host).
 5. **Upstream-API sync analysis (MANDATORY for every fix AND feature)** — this server consumes the Chatwoot REST API. Did the Chatwoot API change (or did you change a tool's route/schema that must match it)? Cross-check the Chatwoot side `../Chatwoot/docs/rules/mcp-sync.md`. A route change → bump minor here AND in the n8n node the same day. If nothing API-facing changed, say so explicitly. Never skip the question.
 6. **Atomic commit** — Conventional Commits, one logical unit. `pnpm version` bump when releasing.
 7. **⛔ Close the cycle — update Obsidian docs (`/doc-obsidian`) — MANDATORY, NEVER skip.** Update the canonical technical docs in the Obsidian vault for anything that changed (tools, resources, API mirroring). Obsidian is the single source of truth (see `../docs/rules/obsidian.md`). Vault: `/home/debian/projects/Obsidian/NooviAI/NooviChat/NooviChat-MCP/`; commit/push from the external repo `/home/debian/projects/Obsidian` (`git add` explicit, never `-A`; `git push origin main`). If nothing documentable changed, state that and skip — but always ask.

@@ -44,9 +44,9 @@ import { register as registerAudio } from "./audio.js";
 import { register as registerCaptainHook } from "./captain-hook.js";
 import { register as registerFlowBuilder } from "./flow-builder.js";
 // ── Admin / diagnostic ────────────────────────────────────────────────────────
-// NOTE: the NooviChat licensing/DRM system is deliberately NOT exposed as MCP
-// tools — it is a product-protection boundary and must not be readable or
-// mutable by API clients or LLMs.
+// NOTE: the NooviChat licensing and operational authorization boundary is
+// deliberately NOT exposed as MCP tools; it must not be readable or mutable by
+// API clients or LLMs.
 import { register as registerWhitelabel } from "./whitelabel.js";
 
 const registrations = [
