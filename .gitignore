@@ -76,3 +76,10 @@ temp/
 # MCP host configs that might embed real tokens during local dev
 claude_desktop_config.json
 mcp-config.local.json
+
+# Local AI / agent state
+CLAUDE.local.md
+.claude/settings.local.json
+.ai/local/
+.ai/tmp/
+.ai/cache/
