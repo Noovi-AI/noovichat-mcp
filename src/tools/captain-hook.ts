@@ -81,7 +81,7 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get Captain AI preferences",
       description:
-        "Return the account's Captain AI configuration: available providers, models, and per-feature {enabled, selected_model}. Requires the `captain_ai` license feature.",
+        "Return the account's Captain AI configuration: available providers, models, and per-feature {enabled, selected_model}. Requires operational account authorization for `captain_ai`.",
       inputSchema: { account_id: optionalAccountId },
       annotations: { readOnlyHint: true },
     },

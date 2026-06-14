@@ -13,9 +13,9 @@
  * Poll `get_commercial_analysis_status` until status is "completed" (or "failed"),
  * then read the full 9-section report with `get_commercial_analysis`.
  *
- * ⚠️ FEATURE FLAG: requires `commercial_analysis` enabled on the account. When
- * OFF, every endpoint returns HTTP 403; safeHandler surfaces it verbatim so the
- * LLM / workflow can detect the disabled state.
+ * ⚠️ Operational authorization: requires `commercial_analysis` enabled on the
+ * account/license state. When OFF, every endpoint returns HTTP 403; safeHandler
+ * surfaces it verbatim so the LLM / workflow can detect the disabled state.
  */
 
 import { z } from "zod";
