@@ -17,7 +17,7 @@ app**. This package only translates between MCP tool calls and REST calls.
 
 ## ⛔ Implementation loop (MANDATORY — run via `/loop` for any non-trivial 3+ step task)
 
-`plan/recon → implement → review → test → upstream-API sync → (commit) → repeat` until nothing left to apply/adjust/polish — then **close the cycle by updating the Obsidian docs**. Single-shot answers to implementation requests are a bug.
+`plan/recon → implement → review → test → upstream-API sync → (commit) → repeat` until nothing left to apply/adjust/polish — then **close the cycle by updating internal docs**. Single-shot answers to implementation requests are a bug.
 
 1. **Recon** — map before editing; read `docs/rules/architecture.md` and the existing `src/tools/<resource>.ts` you are touching. Synthesize a root-cause diagnosis.
 2. **Implement** — match surrounding style: one resource per `src/tools/*.ts` with a `register: RegisterFn`, zod input schemas, JDoc route paths, aggregator in `src/tools/index.ts`. Reference `src/tools/pipeline-cards.ts`. Minimal cohesive change per iteration.
@@ -25,9 +25,9 @@ app**. This package only translates between MCP tool calls and REST calls.
 4. **Test** — MCP stdio smoke: build (`pnpm build`) and exercise the changed tool against a real NooviChat instance (or via the MCP host).
 5. **Upstream-API sync analysis (MANDATORY for every fix AND feature)** — this server consumes the Chatwoot REST API. Did the Chatwoot API change (or did you change a tool's route/schema that must match it)? Cross-check the Chatwoot side `../Chatwoot/docs/rules/mcp-sync.md`. A route change → bump minor here AND in the n8n node the same day. If nothing API-facing changed, say so explicitly. Never skip the question.
 6. **Atomic commit** — Conventional Commits, one logical unit. `pnpm version` bump when releasing.
-7. **⛔ Close the cycle — update internal docs (`/doc-obsidian`) — MANDATORY, NEVER skip.** Update canonical technical docs according to the private documentation process for anything that changed (tools, resources, API mirroring). If nothing documentable changed, state that and skip — but always ask.
+7. **⛔ Close the cycle — update internal docs — MANDATORY, NEVER skip.** Update canonical technical docs according to the private documentation process for anything that changed (tools, resources, API mirroring). If nothing documentable changed, state that and skip — but always ask.
 
-**`pnpm publish` is NOT part of the loop** — run `/pre-publish-audit` first; it needs human approval + golden rules (gated by the root pre-deploy-gate hook). The Obsidian doc update (step 7) IS part of the loop and closes it.
+**`pnpm publish` is NOT part of the loop** — run `/pre-publish-audit` first; it needs human approval + golden rules (gated by the root pre-deploy-gate hook). The internal docs update (step 7) IS part of the loop and closes it.
 
 ### Mandatory tests (even in MVP)
 

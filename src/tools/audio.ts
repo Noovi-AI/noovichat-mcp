@@ -30,7 +30,7 @@
  *     RAILS_ENV=production bundle exec rake noovichat:fix_audio_blob_mime
  *
  * Not exposed over MCP today because there is no public API surface yet.
- * If this becomes product work, track it in /home/debian/projects/Noovichat/Roadmap/.
+ * If this becomes product work, track it in the NooviChat Roadmap.
  *
  * Possible future API shape:
  *   - run_audio_mime_repair    → kick off the rake task body via background
