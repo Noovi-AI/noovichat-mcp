@@ -412,9 +412,19 @@ export const register: RegisterFn = (server, client) => {
         template_id: templateId,
         // Required by the backend (FollowUpTemplateItem::ITEM_TYPES).
         item_type: z
-          .enum(["text", "image", "audio", "video", "document"])
-          .describe("Step type — `text` requires `content`; media types use attachments"),
-        content: z.string().optional().describe("Message body (required when item_type is 'text')"),
+          .enum(["text", "image", "audio", "video", "document", "whatsapp_template"])
+          .describe(
+            "Step type — `text` requires `content`; media types use attachments; " +
+              "`whatsapp_template` sends a Meta-approved WhatsApp template (official inbox, " +
+              "outside the 24h window) and falls back to `content` text otherwise",
+          ),
+        content: z
+          .string()
+          .optional()
+          .describe(
+            "Message body. Required for `text`. For `whatsapp_template` it is the plain-text " +
+              "fallback sent on non-official providers (WAHA/UazAPI) or inside the 24h window",
+          ),
         delay_seconds: z
           .number()
           .int()
@@ -422,6 +432,36 @@ export const register: RegisterFn = (server, client) => {
           .optional()
           .describe("Seconds after the previous step before this one fires"),
         position: z.number().int().nonnegative().optional(),
+        // whatsapp_template item — approved-template reference + parameter mapping.
+        whatsapp_template_name: z
+          .string()
+          .optional()
+          .describe("Approved Meta template name (required when item_type is 'whatsapp_template')"),
+        whatsapp_template_language: z
+          .string()
+          .optional()
+          .describe("Approved template language code, e.g. 'pt_BR'"),
+        whatsapp_template_namespace: z
+          .string()
+          .optional()
+          .describe("Template namespace (360Dialog only)"),
+        whatsapp_template_mapping: z
+          .object({
+            body: z
+              .array(
+                z.object({
+                  type: z.enum(["variable", "text"]),
+                  value: z
+                    .string()
+                    .describe("Follow-up variable name (e.g. 'contact_name') or literal text"),
+                }),
+              )
+              .describe("Ordered BODY parameters ({{1}}, {{2}}, …)"),
+          })
+          .optional()
+          .describe(
+            'Template parameter mapping, e.g. { "body": [ { "type": "variable", "value": "contact_name" } ] }',
+          ),
       },
     },
     async ({ account_id, template_id, ...body }) =>

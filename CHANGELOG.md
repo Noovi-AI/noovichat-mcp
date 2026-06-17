@@ -5,6 +5,20 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-17
+
+### Added
+
+- `create_followup_template_item` now supports the `whatsapp_template` step type:
+  a follow-up step can reference a Meta-approved WhatsApp template
+  (`whatsapp_template_name`, `whatsapp_template_language`,
+  `whatsapp_template_namespace`) plus a parameter mapping
+  (`whatsapp_template_mapping` — ordered BODY params mapped to follow-up variables
+  or literal text). On an official WhatsApp inbox outside the 24h window the step
+  sends the approved template; on non-official providers (WAHA/UazAPI) or inside
+  the window it sends the `content` plain-text fallback. Additive — existing
+  text/media steps are unchanged.
+
 ## [0.7.0] - 2026-06-13
 
 ### Added
