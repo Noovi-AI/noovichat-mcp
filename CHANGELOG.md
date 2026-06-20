@@ -5,6 +5,18 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-20
+
+### Added
+
+- Follow-up automations: AI content mode and customer-inactivity trigger.
+  `create_followup_automation` / `update_followup_automation` now accept
+  `content_mode` (`template` | `ai`) and `ai_instruction`; `follow_up_template_id`
+  is optional (AI mode generates the message at send time from the instruction +
+  conversation history). The trigger enum adds `conversation_inactivity`
+  (`trigger_config.inactivity_minutes` — customer silence since their last
+  received message). Mirrors the Chatwoot follow-up-automations contract.
+
 ## [0.9.0] - 2026-06-20
 
 ### Added

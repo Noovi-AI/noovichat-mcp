@@ -591,17 +591,23 @@ export const register: RegisterFn = (server, client) => {
           .int()
           .positive()
           .optional()
-          .describe("ID of the FollowUpTemplate to schedule. Required when content_mode='template'"),
+          .describe(
+            "ID of the FollowUpTemplate to schedule. Required when content_mode='template'",
+          ),
         ai_instruction: z
           .string()
           .optional()
-          .describe("Goal/instruction for the AI-written follow-up. Required when content_mode='ai'"),
+          .describe(
+            "Goal/instruction for the AI-written follow-up. Required when content_mode='ai'",
+          ),
         delay_minutes: z
           .number()
           .int()
           .nonnegative()
           .optional()
-          .describe("Minutes to wait after the trigger before scheduling (ignored for conversation_inactivity)"),
+          .describe(
+            "Minutes to wait after the trigger before scheduling (ignored for conversation_inactivity)",
+          ),
         enabled: z.boolean().optional().describe("Whether the automation is active (default true)"),
         trigger_config: z
           .record(z.string(), z.unknown())
