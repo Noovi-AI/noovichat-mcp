@@ -5,6 +5,20 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-20
+
+### Added
+
+- `get_conversation_summary` and `generate_conversation_summary`: the conversation
+  AI summary (Resumo de conversa por IA, native Noovi AI — Chatwoot fase 49-B).
+  `get_conversation_summary` reads the stored `{ summary, summary_generated_at }`
+  (read-only); `generate_conversation_summary` (re)generates it via native Noovi
+  AI and returns the refreshed payload. Both take the conversation DISPLAY id.
+  `summarize` requires AI credentials on the account; otherwise it responds that
+  AI is unavailable (a generation error returns HTTP 422). These are the only
+  conversation-scoped tools — the server otherwise stays out of core conversation
+  CRUD by design.
+
 ## [0.8.0] - 2026-06-17
 
 ### Added

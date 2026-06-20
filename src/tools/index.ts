@@ -42,6 +42,7 @@ import { register as registerGoogleCalendar } from "./google-calendar.js";
 
 import { register as registerAudio } from "./audio.js";
 import { register as registerCaptainHook } from "./captain-hook.js";
+import { register as registerConversationSummary } from "./conversation-summary.js";
 import { register as registerFlowBuilder } from "./flow-builder.js";
 // ── Admin / diagnostic ────────────────────────────────────────────────────────
 // NOTE: the NooviChat licensing and operational authorization boundary is
@@ -71,6 +72,7 @@ const registrations = [
   registerFlowBuilder,
   registerWhitelabel,
   registerCaptainHook,
+  registerConversationSummary,
   registerAudio,
 ];
 
