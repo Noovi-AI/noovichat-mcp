@@ -26,6 +26,7 @@ import { register as registerFollowUps } from "./follow-ups.js";
 import { register as registerBroadcasts } from "./broadcasts.js";
 import { register as registerUazapi } from "./uazapi.js";
 import { register as registerWaha } from "./waha.js";
+import { register as registerWhatsappHub } from "./whatsapp-hub.js";
 import { register as registerWhatsappTemplates } from "./whatsapp-templates.js";
 
 // ── CRM & lead management ─────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ const registrations = [
   registerAppointments,
   registerBroadcasts,
   registerWhatsappTemplates,
+  registerWhatsappHub,
   registerWaha,
   registerUazapi,
   registerLeadScoring,
