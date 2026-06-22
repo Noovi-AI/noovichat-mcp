@@ -248,6 +248,22 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
+    "retry_failed_broadcast",
+    {
+      title: "Retry failed contacts",
+      description:
+        "Re-enqueue the failed contacts of a broadcast for another send attempt (transient failures only).",
+      inputSchema: { account_id: optionalAccountId, broadcast_id: broadcastId },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, broadcast_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/broadcasts/${broadcast_id}/retry_failed`);
+      }),
+  );
+
+  server.registerTool(
     "delete_broadcast",
     {
       title: "Delete broadcast",
