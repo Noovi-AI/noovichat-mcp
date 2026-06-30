@@ -43,13 +43,38 @@ const broadcastStatus = z
   .enum(["pending", "running", "paused", "completed", "cancelled", "failed"])
   .describe("Broadcast lifecycle status");
 
-// Backend enum: Broadcast.source_type — csv | tags | kanban
+// Backend enum: Broadcast.source_type — csv | tags | kanban | whatsapp_group
 const sourceType = z
-  .enum(["csv", "tags", "kanban"])
+  .enum(["csv", "tags", "kanban", "whatsapp_group"])
   .describe(
     "How the contact list is sourced: 'csv' (source_config.csv_rows), " +
-      "'tags' (contact tags) or 'kanban' (pipeline filter)",
+      "'tags' (contact tags), 'kanban' (pipeline filter) or " +
+      "'whatsapp_group' (broadcast_targets — deliver straight to WhatsApp groups)",
   );
+
+// Backend enum: BroadcastTarget.target_kind — group | community | channel | status.
+// Only 'group' is currently validated/supported by the WhatsApp engine (the JID must
+// match the `<digits>@g.us` group format).
+const broadcastTargetKind = z
+  .enum(["group", "community", "channel", "status"])
+  .describe("Target kind. Use 'group' — the only kind the WhatsApp engine supports today.");
+
+const broadcastTarget = z
+  .object({
+    target_kind: broadcastTargetKind.default("group"),
+    provider_jid: z
+      .string()
+      .min(1)
+      .describe(
+        "WhatsApp group JID, e.g. '120363000000000000@g.us'. Obtain it from " +
+          "noovi_connect_list_groups.",
+      ),
+    metadata: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe("Optional target metadata (e.g. { name: 'Group name' }) used for display."),
+  })
+  .describe("A WhatsApp group destination for a whatsapp_group broadcast.");
 
 const rotationMode = z
   .enum(["round_robin", "weighted", "random"])
@@ -65,6 +90,14 @@ const broadcastCoreFields = {
     .record(z.string(), z.unknown())
     .optional()
     .describe("Source-specific config (e.g. csv_rows, kanban filter, label name)"),
+  broadcast_targets: z
+    .array(broadcastTarget)
+    .optional()
+    .describe(
+      "WhatsApp group destinations — required when source_type='whatsapp_group'. " +
+        "Each item: { target_kind: 'group', provider_jid: '<jid>@g.us', metadata?: { name } }. " +
+        "Applied on create only (ignored on update).",
+    ),
   inbox_ids: z.array(inboxId).optional().describe("Inboxes to rotate among"),
   inbox_weights: z
     .record(z.string(), z.number())
@@ -164,7 +197,9 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create broadcast",
       description:
-        "Create a new mass-messaging broadcast. Pass source_type with matching source_config (CSV rows, kanban filter, label name).",
+        "Create a new mass-messaging broadcast. Pass source_type with its matching source " +
+        "(CSV rows / kanban filter / label name in source_config, or broadcast_targets when " +
+        "source_type='whatsapp_group' to deliver straight to WhatsApp groups).",
       inputSchema: {
         account_id: optionalAccountId,
         ...broadcastCoreFields,

@@ -11,15 +11,28 @@
  * NooviConnect WhatsApp channel), NOT a separate session id. Use
  * `noovi_connect_list_sessions` first to discover which inbox to act on.
  *
- * Routes (Chatwoot/config/routes.rb 612-640):
+ * Routes (Chatwoot/config/routes.rb 612-658):
  *   /api/v1/accounts/:account_id/noovi_connect
  *     - GET    /                              (index — list sessions)
  *     - GET    /:id/groups                    (list WhatsApp groups)
  *     - GET    /:id/newsletters               (list channels / newsletters)
+ *     - POST   /:id/unfollow_newsletter       (newsletter_id)
  *     - GET    /:id/hub_report                (aggregated Hub report)
  *     - POST   /:id/create_group              (create a group)
  *     - GET    /:id/group_participants        (?group_jid=…)
+ *     - GET    /:id/group_invite_link         (?group_jid=…) → { invite_link, invite_code }
  *     - POST   /:id/add_participants          (group_jid, phones[])
+ *     - POST   /:id/remove_participants       (group_jid, phones[])
+ *     - POST   /:id/promote_participants      (group_jid, phones[])
+ *     - POST   /:id/demote_participants       (group_jid, phones[])
+ *     - POST   /:id/set_group_name            (group_jid, name)
+ *     - POST   /:id/set_group_topic           (group_jid, topic)
+ *     - POST   /:id/set_group_photo           (group_jid, photo)
+ *     - POST   /:id/set_group_locked          (group_jid, locked)
+ *     - POST   /:id/set_group_announce        (group_jid, announce)
+ *     - POST   /:id/leave_group               (group_jid)
+ *     - POST   /:id/send_poll                 (phone, question, options[], max_answer?)
+ *     - POST   /:id/send_location             (phone, latitude, longitude, title?)
  */
 
 import { z } from "zod";
@@ -32,6 +45,16 @@ const groupJid = z
   .describe(
     "WhatsApp group JID (e.g. '120363000000000000@g.us'). Obtain it from noovi_connect_list_groups.",
   );
+
+const phones = z
+  .array(z.string().min(1))
+  .min(1)
+  .describe("Phone numbers (E.164, digits only, e.g. '5511999999999')");
+
+const phone = z
+  .string()
+  .min(1)
+  .describe("Destination phone number (E.164, digits only, e.g. '5511999999999')");
 
 export const register: RegisterFn = (server, client) => {
   // ── Sessions ───────────────────────────────────────────────────────────────
@@ -143,6 +166,24 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
+    "noovi_connect_group_invite_link",
+    {
+      title: "WhatsApp Hub: group invite link",
+      description:
+        "Get the invite link (and invite code) of a WhatsApp group on a NooviConnect inbox. Requires the group JID. Returns { invite_link, invite_code }.",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId, group_jid: groupJid },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id, group_jid }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/group_invite_link`, {
+          group_jid,
+        });
+      }),
+  );
+
+  server.registerTool(
     "noovi_connect_add_participants",
     {
       title: "WhatsApp Hub: add participants",
@@ -152,10 +193,7 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         inbox_id: inboxId,
         group_jid: groupJid,
-        phones: z
-          .array(z.string().min(1))
-          .min(1)
-          .describe("Phone numbers to add (E.164, e.g. '5511999999999')"),
+        phones,
       },
     },
     async ({ account_id, inbox_id, ...body }) =>
@@ -165,6 +203,296 @@ export const register: RegisterFn = (server, client) => {
           `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/add_participants`,
           body,
         );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_remove_participants",
+    {
+      title: "WhatsApp Hub: remove participants",
+      description:
+        "Remove one or more phone numbers from a WhatsApp group on a NooviConnect inbox. Requires the group JID and the phone numbers (E.164, digits only). The session must be a group admin.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        phones,
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/remove_participants`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_promote_participants",
+    {
+      title: "WhatsApp Hub: promote participants",
+      description:
+        "Promote one or more group members to admin on a WhatsApp group of a NooviConnect inbox. Requires the group JID and the phone numbers (E.164, digits only).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        phones,
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/promote_participants`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_demote_participants",
+    {
+      title: "WhatsApp Hub: demote participants",
+      description:
+        "Demote one or more admins back to regular member on a WhatsApp group of a NooviConnect inbox. Requires the group JID and the phone numbers (E.164, digits only).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        phones,
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/demote_participants`,
+          body,
+        );
+      }),
+  );
+
+  // ── Group settings ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_set_group_name",
+    {
+      title: "WhatsApp Hub: set group name",
+      description:
+        "Update the name (subject) of a WhatsApp group on a NooviConnect inbox. Requires the group JID and the new name.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        name: z.string().min(1).describe("New group name / subject"),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_group_name`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_set_group_topic",
+    {
+      title: "WhatsApp Hub: set group topic",
+      description:
+        "Update the topic (description) of a WhatsApp group on a NooviConnect inbox. Requires the group JID; pass an empty topic to clear it.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        topic: z.string().describe("New group topic / description (empty string clears it)"),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_group_topic`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_set_group_photo",
+    {
+      title: "WhatsApp Hub: set group photo",
+      description:
+        "Update the picture of a WhatsApp group on a NooviConnect inbox. Requires the group JID and a publicly reachable image URL (the WhatsApp engine fetches it).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        photo: z.string().min(1).describe("Public image URL for the new group picture"),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_group_photo`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_set_group_locked",
+    {
+      title: "WhatsApp Hub: set group locked",
+      description:
+        "Toggle the 'only admins can edit group info' setting on a WhatsApp group of a NooviConnect inbox. Requires the group JID and the locked flag.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        locked: z
+          .boolean()
+          .describe("true = only admins can edit the group's info (name/topic/photo)"),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_group_locked`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_set_group_announce",
+    {
+      title: "WhatsApp Hub: set group announce",
+      description:
+        "Toggle the 'only admins can send messages' (announcement) setting on a WhatsApp group of a NooviConnect inbox. Requires the group JID and the announce flag.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        group_jid: groupJid,
+        announce: z.boolean().describe("true = only admins can send messages (announcement group)"),
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_group_announce`,
+          body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_leave_group",
+    {
+      title: "WhatsApp Hub: leave group",
+      description:
+        "Make the NooviConnect session leave a WhatsApp group. Requires the group JID. This removes the connected number from the group.",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId, group_jid: groupJid },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, inbox_id, group_jid }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/leave_group`, {
+          group_jid,
+        });
+      }),
+  );
+
+  // ── Channels (newsletters) ─────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_unfollow_newsletter",
+    {
+      title: "WhatsApp Hub: unfollow channel",
+      description:
+        "Unfollow a WhatsApp channel (newsletter) on a NooviConnect inbox. Requires the newsletter JID (from noovi_connect_list_channels).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        newsletter_id: z
+          .string()
+          .min(1)
+          .describe("Channel (newsletter) JID, e.g. '1203630000000000@newsletter'"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/unfollow_newsletter`,
+          body,
+        );
+      }),
+  );
+
+  // ── Rich messages ──────────────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_send_poll",
+    {
+      title: "WhatsApp Hub: send poll",
+      description:
+        "Send a poll message from a NooviConnect inbox to a phone number. Requires the phone, a question and at least 2 options.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        phone,
+        question: z.string().min(1).describe("Poll question"),
+        options: z.array(z.string().min(1)).min(2).describe("Poll options (at least 2)"),
+        max_answer: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            "Max answers per voter (>1 enables multiple-choice; defaults to single-choice)",
+          ),
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/send_poll`, body);
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_send_location",
+    {
+      title: "WhatsApp Hub: send location",
+      description:
+        "Send a location (map pin) message from a NooviConnect inbox to a phone number. Requires the phone, latitude and longitude (decimal degrees).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        phone,
+        latitude: z.number().describe("Latitude in decimal degrees"),
+        longitude: z.number().describe("Longitude in decimal degrees"),
+        title: z.string().optional().describe("Optional location title / label"),
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/send_location`, body);
       }),
   );
 };

@@ -34,8 +34,8 @@ for them to work end-to-end.
 | **Pipeline webhooks** | 9 | Managed CRUD + public token-only trigger endpoint |
 | **Follow-Ups** | 24 | Schedule, cancel, templates, items, variables, automations, reports |
 | **Atendimentos** | 29 | Appointments, services, professionals, partners, availability, Google Calendar sync |
-| **Broadcasts** | 14 | Mass-send WhatsApp campaigns, blacklist, pause/resume, duplicate |
-| **WhatsApp Hub (NooviConnect)** | 7 | List sessions, groups & channels, hub report, create group, group participants |
+| **Broadcasts** | 14 | Mass-send WhatsApp campaigns (CSV/tags/kanban/whatsapp_group), blacklist, pause/resume, duplicate |
+| **WhatsApp Hub (NooviConnect)** | 20 | Sessions, groups & channels, hub report, create/leave group, participants (add/remove/promote/demote), group settings (name/topic/photo/locked/announce), invite link, unfollow channel, send poll/location |
 | **WhatsApp Templates** | 6 | Custom CRUD over Meta Cloud + sync from Meta |
 | **WAHA** | 14 | Self-hosted WhatsApp gateway: status, QR, pairing, sessions, settings, sync |
 | **UAZAPI** | 8 | Alternative WhatsApp gateway: status, settings, connect/disconnect, pairing |

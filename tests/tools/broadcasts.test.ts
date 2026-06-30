@@ -47,3 +47,42 @@ describe("broadcasts tools — retry_failed", () => {
     expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/broadcasts/42/retry_failed");
   });
 });
+
+describe("broadcasts tools — whatsapp_group source (NC-33)", () => {
+  it("create_broadcast forwards source_type=whatsapp_group + broadcast_targets", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools.get("create_broadcast")?.handler({
+      account_id: 7,
+      name: "Promo grupos",
+      source_type: "whatsapp_group",
+      broadcast_targets: [
+        {
+          target_kind: "group",
+          provider_jid: "120363000000000000@g.us",
+          metadata: { name: "VIP" },
+        },
+      ],
+      message_type: "custom",
+      message_payload: { messages: [{ type: "text", text: "Olá!" }] },
+    });
+
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/broadcasts", {
+      broadcast: {
+        name: "Promo grupos",
+        source_type: "whatsapp_group",
+        broadcast_targets: [
+          {
+            target_kind: "group",
+            provider_jid: "120363000000000000@g.us",
+            metadata: { name: "VIP" },
+          },
+        ],
+        message_type: "custom",
+        message_payload: { messages: [{ type: "text", text: "Olá!" }] },
+      },
+    });
+  });
+});

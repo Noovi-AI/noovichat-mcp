@@ -40,7 +40,20 @@ const EXPECTED_TOOLS = [
   "noovi_connect_hub_report",
   "noovi_connect_create_group",
   "noovi_connect_group_participants",
+  "noovi_connect_group_invite_link",
   "noovi_connect_add_participants",
+  "noovi_connect_remove_participants",
+  "noovi_connect_promote_participants",
+  "noovi_connect_demote_participants",
+  "noovi_connect_set_group_name",
+  "noovi_connect_set_group_topic",
+  "noovi_connect_set_group_photo",
+  "noovi_connect_set_group_locked",
+  "noovi_connect_set_group_announce",
+  "noovi_connect_leave_group",
+  "noovi_connect_unfollow_newsletter",
+  "noovi_connect_send_poll",
+  "noovi_connect_send_location",
 ];
 
 describe("whatsapp-hub tools", () => {
@@ -139,6 +152,149 @@ describe("whatsapp-hub tools", () => {
     expect(client.post).toHaveBeenCalledWith(
       "/api/v1/accounts/7/noovi_connect/3/add_participants",
       { group_jid: "123@g.us", phones: ["5511999999999"] },
+    );
+  });
+
+  it("group_invite_link passes group_jid as a query param (GET)", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools
+      .get("noovi_connect_group_invite_link")
+      ?.handler({ account_id: 7, inbox_id: 3, group_jid: "123@g.us" });
+    expect(client.get).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/noovi_connect/3/group_invite_link",
+      { group_jid: "123@g.us" },
+    );
+  });
+
+  it("remove/promote/demote participants post group_jid + phones to their routes", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    for (const action of ["remove_participants", "promote_participants", "demote_participants"]) {
+      await tools.get(`noovi_connect_${action}`)?.handler({
+        account_id: 7,
+        inbox_id: 3,
+        group_jid: "123@g.us",
+        phones: ["5511999999999"],
+      });
+      expect(client.post).toHaveBeenCalledWith(`/api/v1/accounts/7/noovi_connect/3/${action}`, {
+        group_jid: "123@g.us",
+        phones: ["5511999999999"],
+      });
+    }
+  });
+
+  it("set_group_name / set_group_locked / set_group_announce post their bodies", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools
+      .get("noovi_connect_set_group_name")
+      ?.handler({ account_id: 7, inbox_id: 3, group_jid: "123@g.us", name: "Squad" });
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/set_group_name", {
+      group_jid: "123@g.us",
+      name: "Squad",
+    });
+
+    await tools
+      .get("noovi_connect_set_group_locked")
+      ?.handler({ account_id: 7, inbox_id: 3, group_jid: "123@g.us", locked: true });
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/noovi_connect/3/set_group_locked",
+      { group_jid: "123@g.us", locked: true },
+    );
+
+    await tools
+      .get("noovi_connect_set_group_announce")
+      ?.handler({ account_id: 7, inbox_id: 3, group_jid: "123@g.us", announce: false });
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/noovi_connect/3/set_group_announce",
+      { group_jid: "123@g.us", announce: false },
+    );
+  });
+
+  it("leave_group posts only group_jid", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools
+      .get("noovi_connect_leave_group")
+      ?.handler({ account_id: 7, inbox_id: 3, group_jid: "123@g.us" });
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/leave_group", {
+      group_jid: "123@g.us",
+    });
+  });
+
+  it("unfollow_newsletter posts the newsletter_id", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools
+      .get("noovi_connect_unfollow_newsletter")
+      ?.handler({ account_id: 7, inbox_id: 3, newsletter_id: "999@newsletter" });
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/noovi_connect/3/unfollow_newsletter",
+      { newsletter_id: "999@newsletter" },
+    );
+  });
+
+  it("send_poll / send_location post their bodies (no account_id/inbox_id)", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools.get("noovi_connect_send_poll")?.handler({
+      account_id: 7,
+      inbox_id: 3,
+      phone: "5511999999999",
+      question: "Pizza?",
+      options: ["Sim", "Não"],
+      max_answer: 1,
+    });
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/send_poll", {
+      phone: "5511999999999",
+      question: "Pizza?",
+      options: ["Sim", "Não"],
+      max_answer: 1,
+    });
+
+    await tools.get("noovi_connect_send_location")?.handler({
+      account_id: 7,
+      inbox_id: 3,
+      phone: "5511999999999",
+      latitude: -23.5,
+      longitude: -46.6,
+      title: "Escritório",
+    });
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/send_location", {
+      phone: "5511999999999",
+      latitude: -23.5,
+      longitude: -46.6,
+      title: "Escritório",
+    });
+  });
+
+  it("marks mutating group tools with the right annotations", () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    for (const name of [
+      "noovi_connect_remove_participants",
+      "noovi_connect_leave_group",
+      "noovi_connect_unfollow_newsletter",
+    ]) {
+      expect(tools.get(name)?.config.annotations?.destructiveHint).toBe(true);
+    }
+    expect(tools.get("noovi_connect_group_invite_link")?.config.annotations?.readOnlyHint).toBe(
+      true,
     );
   });
 });

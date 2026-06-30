@@ -5,6 +5,24 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-30
+
+### Added
+
+- WhatsApp Hub broadcast to groups (NC-33): `create_broadcast` now accepts
+  `source_type='whatsapp_group'` and a `broadcast_targets` array
+  (`{ target_kind:'group', provider_jid:'<jid>@g.us', metadata?:{name} }`),
+  mirroring the Chatwoot Broadcast `whatsapp_group` source + `broadcast_targets`
+  contract. Targets are applied on create (ignored on update).
+- WhatsApp Hub group/channel/rich-message coverage (NC-50): new tools
+  `noovi_connect_group_invite_link` (returns `{ invite_link, invite_code }`),
+  `noovi_connect_remove_participants`, `noovi_connect_promote_participants`,
+  `noovi_connect_demote_participants`, `noovi_connect_set_group_name`,
+  `noovi_connect_set_group_topic`, `noovi_connect_set_group_photo`,
+  `noovi_connect_set_group_locked`, `noovi_connect_set_group_announce`,
+  `noovi_connect_leave_group`, `noovi_connect_unfollow_newsletter`,
+  `noovi_connect_send_poll` and `noovi_connect_send_location`.
+
 ## [0.10.0] - 2026-06-20
 
 ### Added
