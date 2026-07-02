@@ -5,6 +5,21 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-07-02
+
+### Added
+
+- WhatsApp Hub profile, labels and group extras: new tools
+  `noovi_connect_get_profile` (connected account profile),
+  `noovi_connect_set_profile_status` (about/status text),
+  `noovi_connect_check_number` (does a number have WhatsApp),
+  `noovi_connect_list_labels` + `noovi_connect_list_label_chats`
+  (WhatsApp Business labels — Business accounts only),
+  `noovi_connect_group_picture`, `noovi_connect_group_info_from_link`
+  (preview a group from an invite link) and
+  `noovi_connect_join_group_with_link`. Mirrors the new NooviConnect endpoints
+  documented in the Chatwoot OpenAPI and the public WhatsApp Hub docs.
+
 ## [0.12.0] - 2026-06-30
 
 ### Added

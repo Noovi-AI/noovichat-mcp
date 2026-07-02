@@ -33,6 +33,14 @@
  *     - POST   /:id/leave_group               (group_jid)
  *     - POST   /:id/send_poll                 (phone, question, options[], max_answer?)
  *     - POST   /:id/send_location             (phone, latitude, longitude, title?)
+ *     - GET    /:id/profile                    (connected account profile)
+ *     - POST   /:id/set_profile_status         (status)
+ *     - GET    /:id/check_number               (?phone=…)
+ *     - GET    /:id/labels                     (WhatsApp Business labels)
+ *     - GET    /:id/label_chats                (?label_id=…)
+ *     - GET    /:id/group_picture              (?group_jid=…)
+ *     - GET    /:id/group_info_from_link       (?link=…)
+ *     - POST   /:id/join_group_with_link       (link)
  */
 
 import { z } from "zod";
@@ -493,6 +501,166 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.post(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/send_location`, body);
+      }),
+  );
+
+  // ── Profile ──────────────────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_get_profile",
+    {
+      title: "WhatsApp Hub: get profile",
+      description:
+        "Get the connected WhatsApp account profile of a NooviConnect inbox (id, name and picture URL).",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/profile`);
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_set_profile_status",
+    {
+      title: "WhatsApp Hub: set profile status",
+      description:
+        "Update the connected account's WhatsApp status/about text on a NooviConnect inbox.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        status: z.string().describe("New status/about text"),
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/set_profile_status`,
+          body,
+        );
+      }),
+  );
+
+  // ── Validation ───────────────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_check_number",
+    {
+      title: "WhatsApp Hub: check number",
+      description:
+        "Check whether a phone number has an active WhatsApp account, via a NooviConnect inbox. Useful before messaging or broadcasting.",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId, phone },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id, phone: phoneArg }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/check_number`, {
+          phone: phoneArg,
+        });
+      }),
+  );
+
+  // ── Labels (WhatsApp Business) ───────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_list_labels",
+    {
+      title: "WhatsApp Hub: list labels",
+      description:
+        "List the WhatsApp Business labels of a NooviConnect inbox (id, name, color). Business accounts only; personal accounts return an empty list. Distinct from NooviChat conversation labels.",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/labels`);
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_list_label_chats",
+    {
+      title: "WhatsApp Hub: chats by label",
+      description:
+        "List the chats tagged with a WhatsApp Business label on a NooviConnect inbox. Requires the label id (from noovi_connect_list_labels).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        label_id: z.string().min(1).describe("Label id (from noovi_connect_list_labels)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id, label_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/label_chats`, {
+          label_id,
+        });
+      }),
+  );
+
+  // ── Group extras ─────────────────────────────────────────────────────────────
+  server.registerTool(
+    "noovi_connect_group_picture",
+    {
+      title: "WhatsApp Hub: group picture",
+      description:
+        "Get the picture URL of a WhatsApp group on a NooviConnect inbox (null when none). Requires the group JID.",
+      inputSchema: { account_id: optionalAccountId, inbox_id: inboxId, group_jid: groupJid },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id, group_jid }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/group_picture`, {
+          group_jid,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_group_info_from_link",
+    {
+      title: "WhatsApp Hub: group info from link",
+      description:
+        "Preview a WhatsApp group from an invite link (without joining), via a NooviConnect inbox. Requires the invite link.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        link: z.string().min(1).describe("Group invite link (https://chat.whatsapp.com/…)"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, inbox_id, link }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/group_info_from_link`,
+          { link },
+        );
+      }),
+  );
+
+  server.registerTool(
+    "noovi_connect_join_group_with_link",
+    {
+      title: "WhatsApp Hub: join group by link",
+      description: "Join a WhatsApp group from an invite link, via a NooviConnect inbox.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        inbox_id: inboxId,
+        link: z.string().min(1).describe("Group invite link (https://chat.whatsapp.com/…)"),
+      },
+    },
+    async ({ account_id, inbox_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/noovi_connect/${inbox_id}/join_group_with_link`,
+          body,
+        );
       }),
   );
 };

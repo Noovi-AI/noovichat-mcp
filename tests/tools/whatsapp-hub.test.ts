@@ -54,6 +54,14 @@ const EXPECTED_TOOLS = [
   "noovi_connect_unfollow_newsletter",
   "noovi_connect_send_poll",
   "noovi_connect_send_location",
+  "noovi_connect_get_profile",
+  "noovi_connect_set_profile_status",
+  "noovi_connect_check_number",
+  "noovi_connect_list_labels",
+  "noovi_connect_list_label_chats",
+  "noovi_connect_group_picture",
+  "noovi_connect_group_info_from_link",
+  "noovi_connect_join_group_with_link",
 ];
 
 describe("whatsapp-hub tools", () => {
@@ -78,9 +86,51 @@ describe("whatsapp-hub tools", () => {
       "noovi_connect_list_channels",
       "noovi_connect_hub_report",
       "noovi_connect_group_participants",
+      "noovi_connect_get_profile",
+      "noovi_connect_check_number",
+      "noovi_connect_list_labels",
+      "noovi_connect_list_label_chats",
+      "noovi_connect_group_picture",
+      "noovi_connect_group_info_from_link",
     ]) {
       expect(tools.get(name)?.config.annotations?.readOnlyHint).toBe(true);
     }
+  });
+
+  it("profile / labels / check_number / group_picture build the right routes", async () => {
+    const { server, tools } = makeStubServer();
+    const client = makeMockClient();
+    register(server as never, client as unknown as NooviChatClient);
+
+    await tools.get("noovi_connect_get_profile")?.handler({ account_id: 7, inbox_id: 3 });
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/profile");
+
+    await tools
+      .get("noovi_connect_check_number")
+      ?.handler({ account_id: 7, inbox_id: 3, phone: "5511999999999" });
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/check_number", {
+      phone: "5511999999999",
+    });
+
+    await tools.get("noovi_connect_list_labels")?.handler({ account_id: 7, inbox_id: 3 });
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/labels");
+
+    await tools
+      .get("noovi_connect_list_label_chats")
+      ?.handler({ account_id: 7, inbox_id: 3, label_id: "5" });
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/noovi_connect/3/label_chats", {
+      label_id: "5",
+    });
+
+    await tools.get("noovi_connect_set_profile_status")?.handler({
+      account_id: 7,
+      inbox_id: 3,
+      status: "Disponível",
+    });
+    expect(client.post).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/noovi_connect/3/set_profile_status",
+      { status: "Disponível" },
+    );
   });
 
   it("list_sessions hits the index route without inbox", async () => {
