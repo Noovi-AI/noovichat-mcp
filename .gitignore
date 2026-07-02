@@ -83,3 +83,11 @@ CLAUDE.local.md
 .ai/local/
 .ai/tmp/
 .ai/cache/
+# Shared agent config (Claude Code / Codex) — local, not part of the package
+.agents/
+.ai/
+.claude/agents/
+.claude/skills/
+.codex/
+.mcp.json
+AGENTS.md
