@@ -27,7 +27,7 @@ for them to work end-to-end.
 
 | Area | Tools | Highlights |
 |---|---|---|
-| **Pipeline Pro — core** | 28 | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore |
+| **Pipeline Pro — core** | 32 | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore, additional (non-primary) contacts/conversations |
 | **Pipeline automations** | 24 | CRUD, execute, dry-run, validate, audit logs, executions, templates |
 | **Pipeline activities** | 27 | Activities CRUD, sequences, templates, status transitions |
 | **Pipeline sequences** | 8 | Card-attached cadences, external trigger, analytics |

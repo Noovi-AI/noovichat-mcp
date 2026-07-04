@@ -7,7 +7,14 @@
  *   /api/v1/accounts/:account_id/pipeline/cards/* (namespaced — assign,
  *     deal_status, timeline, restore, permanently_delete, discarded,
  *     bulk_assign, bulk_delete, bulk_set_priority, lead_scores/recalculate
- *     and override, sequences attached to a card)
+ *     and override, sequences attached to a card, and additive non-primary
+ *     contacts/conversations links)
+ *
+ * Additional contacts/conversations (FR2, Chatwoot v4.15.1.12): the singular
+ * primary contact (card.contact_id) and conversation (card.conversation_display_id)
+ * are UNCHANGED; add_/remove_card_contact and add_/remove_card_conversation
+ * manage the additive `additional_contacts` / `additional_conversations` links
+ * surfaced on the card's detail response (primary de-duped out).
  *
  * The top-level resource is preferred for create/update/destroy; the
  * namespaced one carries domain-specific actions.
@@ -18,6 +25,8 @@ import type { RegisterFn } from "../types.js";
 import {
   accountId,
   agentUserId,
+  contactId,
+  conversationDisplayId,
   customAttributes,
   optionalAccountId,
   pagination,
@@ -375,6 +384,101 @@ export const register: RegisterFn = (server, client) => {
         return client.patch(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/assign`, {
           owner_id,
         });
+      }),
+  );
+
+  // ── Additional (non-primary) contacts & conversations ─────────────────────
+  // Purely additive links. The PRIMARY contact stays pipeline_cards.contact_id
+  // and the PRIMARY conversation stays pipeline_cards.conversation_display_id
+  // (unchanged, retrocompat). These surface on get_card as
+  // `additional_contacts` / `additional_conversations` (primary de-duped out).
+  // Routes: Chatwoot/config/routes.rb 706-716 (namespace :pipeline →
+  //   resources :cards → resources :contacts/:conversations, only create+destroy).
+  server.registerTool(
+    "add_card_contact",
+    {
+      title: "Add an additional contact to a card",
+      description:
+        "Link an extra (non-primary) contact to a pipeline card. The primary contact (card.contact_id) is unchanged. Returns the link { id, contact_id, name, email, phone_number, avatar_url, role }; the `id` is the link id needed by remove_card_contact.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        card_id: cardId,
+        contact_id: contactId,
+        role: z
+          .string()
+          .optional()
+          .describe("Optional role label for this contact on the card (e.g. 'decision_maker')"),
+      },
+    },
+    async ({ account_id, card_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/contacts`, body);
+      }),
+  );
+
+  server.registerTool(
+    "remove_card_contact",
+    {
+      title: "Remove an additional contact from a card",
+      description:
+        "Unlink an additional (non-primary) contact from a card. Pass the link id (the `id` from add_card_contact / the `additional_contacts[].id` on the card), NOT the contact_id. Cannot remove the primary contact.",
+      inputSchema: {
+        account_id: accountId,
+        card_id: cardId,
+        id: z.number().int().positive().describe("Pipeline-card-contact link id (not contact_id)"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, card_id, id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/contacts/${id}`);
+      }),
+  );
+
+  server.registerTool(
+    "add_card_conversation",
+    {
+      title: "Add an additional conversation to a card",
+      description:
+        "Link an extra (non-primary) conversation to a pipeline card. The primary conversation (card.conversation_display_id) is unchanged. Returns the link { id, conversation_display_id }; the `id` is the link id needed by remove_card_conversation.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        card_id: cardId,
+        conversation_display_id: conversationDisplayId,
+      },
+    },
+    async ({ account_id, card_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/conversations`, body);
+      }),
+  );
+
+  server.registerTool(
+    "remove_card_conversation",
+    {
+      title: "Remove an additional conversation from a card",
+      description:
+        "Unlink an additional (non-primary) conversation from a card. Pass the link id (the `id` from add_card_conversation / the `additional_conversations[].id` on the card), NOT the conversation_display_id. Cannot remove the primary conversation.",
+      inputSchema: {
+        account_id: accountId,
+        card_id: cardId,
+        id: z
+          .number()
+          .int()
+          .positive()
+          .describe("Pipeline-card-conversation link id (not conversation_display_id)"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, card_id, id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/conversations/${id}`,
+        );
       }),
   );
 
