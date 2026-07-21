@@ -1,27 +1,16 @@
 /**
- * Atendimentos (Appointments / Bookings) — NooviChat custom feature.
+ * Atendimentos (appointments) and their supporting catalogs.
  *
- * Routes (Chatwoot/config/routes.rb 694-719):
+ * Canonical Rails routes:
  *   /api/v1/accounts/:account_id/appointments
- *     - GET    /                             (index)
- *     - GET    /:id                          (show)
- *     - POST   /                             (create)
- *     - PATCH  /:id                          (update)
- *     - DELETE /:id                          (destroy / cancel)
- *     - POST   /:id/confirm
- *     - POST   /:id/complete
- *     - POST   /:id/no_show
- *     - POST   /:id/sync_to_google
- *     - GET    /availability                 (collection)
- *     - POST   /bulk_action                  (collection)
- *     - GET    /export.csv                   (collection)
- *     - GET    /metrics                      (collection)
- *
  *   /api/v1/accounts/:account_id/professionals
- *     - Standard CRUD + GET /:id/availability
+ *   /api/v1/accounts/:account_id/services
+ *   /api/v1/accounts/:account_id/partners
  *
- *   /api/v1/accounts/:account_id/services       (CRUD)
- *   /api/v1/accounts/:account_id/partners       (CRUD)
+ * These controllers render JSON directly. Appointment list responses use
+ * `{ data, meta }`; the remaining JSON responses use `{ data }`. Delete
+ * endpoints return 204 and are converted by NooviChatClient to
+ * `{ success: true }`.
  */
 
 import { z } from "zod";
@@ -29,8 +18,9 @@ import type { RegisterFn } from "../types.js";
 import {
   accountId,
   contactId,
+  conversationDisplayId,
+  customAttributes,
   optionalAccountId,
-  pagination,
   resolveAccountId,
   safeHandler,
 } from "./_helpers.js";
@@ -39,31 +29,124 @@ const appointmentId = z.number().int().positive().describe("Appointment ID");
 const professionalId = z.number().int().positive().describe("Professional ID");
 const serviceId = z.number().int().positive().describe("Service ID");
 const partnerId = z.number().int().positive().describe("Partner ID");
+const pipelineCardId = z.number().int().positive().describe("Pipeline card ID");
 
-const appointmentStatus = z
-  .enum(["pending", "confirmed", "completed", "no_show", "cancelled"])
-  .describe("Appointment status");
+const appointmentStatus = z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]);
 
-const isoDate = z.string().describe("ISO8601 date or datetime");
+const appointmentStatusFilter = z
+  .string()
+  .regex(
+    /^\s*(scheduled|confirmed|completed|cancelled|no_show)\s*(,\s*(scheduled|confirmed|completed|cancelled|no_show)\s*)*$/,
+    "Use one or more comma-separated appointment statuses",
+  )
+  .describe(`Comma-separated appointment statuses: ${appointmentStatus.options.join(", ")}`);
+
+const localDateTime = z
+  .string()
+  .datetime({ offset: true, local: true })
+  .describe(
+    "ISO 8601 datetime. A value without an offset is interpreted in the account reporting timezone.",
+  );
+
+const absoluteDateTime = z
+  .string()
+  .datetime({ offset: true })
+  .describe("ISO 8601 datetime with Z or an explicit UTC offset");
+
+const calendarDate = z.string().date().describe("Calendar date in YYYY-MM-DD format");
+
+const durationMinutes = z.number().int().positive().describe("Duration in minutes");
+
+const appointmentPage = z
+  .number()
+  .int()
+  .positive()
+  .safe()
+  .optional()
+  .describe("Positive safe-integer page number; each page contains 50 appointments");
+
+const hourMinute = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a valid 24-hour time in HH:MM format");
+
+const workingHourWindow = z
+  .object({
+    start: hourMinute,
+    end: hourMinute,
+  })
+  .strict()
+  .refine((window) => window.start < window.end, {
+    message: "Working-hour window start must be before end",
+    path: ["end"],
+  });
+
+const workingHours = z
+  .object({
+    mon: z.array(workingHourWindow).optional(),
+    tue: z.array(workingHourWindow).optional(),
+    wed: z.array(workingHourWindow).optional(),
+    thu: z.array(workingHourWindow).optional(),
+    fri: z.array(workingHourWindow).optional(),
+    sat: z.array(workingHourWindow).optional(),
+    sun: z.array(workingHourWindow).optional(),
+  })
+  .strict()
+  .describe("Working-hour windows keyed by mon, tue, wed, thu, fri, sat, and sun");
+
+const reminderOffset = z.number().int().nonnegative().default(0);
+const serviceReminderTemplate = z
+  .object({
+    label: z.string().optional(),
+    days_before: reminderOffset,
+    hours_before: reminderOffset,
+    minutes_before: reminderOffset,
+    body_template: z.string().min(1),
+    active: z.boolean().optional(),
+    send_via: z.literal("whatsapp").default("whatsapp"),
+    whatsapp_template_id: z.number().int().positive().nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (template) =>
+      (template.days_before ?? 0) + (template.hours_before ?? 0) + (template.minutes_before ?? 0) >
+      0,
+    {
+      message: "At least one reminder offset must be greater than zero",
+      path: ["minutes_before"],
+    },
+  );
+
+const serviceReminderTemplates = z
+  .array(serviceReminderTemplate)
+  .optional()
+  .describe("Replacement list of reminder templates; omit to preserve and pass [] to clear");
+
+const serviceIds = z
+  .array(serviceId)
+  .optional()
+  .describe("Replacement list of account service IDs offered by the professional");
+
+const partnerKind = z.enum(["convenio", "seguro", "plano", "outros"]);
 
 export const register: RegisterFn = (server, client) => {
-  // ── Appointments — list / read / write ─────────────────────────────────────
   server.registerTool(
     "list_appointments",
     {
       title: "List appointments",
       description:
-        "List appointments filtered by status, professional, service, partner, contact, or date range.",
+        "Return {data, meta} for appointments filtered by date, status, professional, service, partner, contact, pipeline card, or conversation.",
       inputSchema: {
         account_id: optionalAccountId,
-        status: appointmentStatus.optional(),
+        status: appointmentStatusFilter.optional(),
         professional_id: professionalId.optional(),
         service_id: serviceId.optional(),
         partner_id: partnerId.optional(),
         contact_id: contactId.optional(),
-        from: isoDate.optional().describe("Start of date range"),
-        to: isoDate.optional().describe("End of date range"),
-        ...pagination,
+        pipeline_card_id: pipelineCardId.optional(),
+        conversation_display_id: conversationDisplayId.optional(),
+        from: absoluteDateTime.optional().describe("Start of the scheduled-at range"),
+        to: absoluteDateTime.optional().describe("End of the scheduled-at range"),
+        page: appointmentPage,
       },
       annotations: { readOnlyHint: true },
     },
@@ -78,7 +161,8 @@ export const register: RegisterFn = (server, client) => {
     "get_appointment",
     {
       title: "Get appointment",
-      description: "Read full detail of an appointment (contact, service, professional, status).",
+      description:
+        "Return {data} with an appointment and its contact, professional, service, and optional partner.",
       inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
       annotations: { readOnlyHint: true },
     },
@@ -93,22 +177,25 @@ export const register: RegisterFn = (server, client) => {
     "create_appointment",
     {
       title: "Create appointment",
-      description: "Schedule a new appointment for a contact with a professional and service.",
+      description:
+        "Create a scheduled appointment. professional_id is required; use list_available_professionals to find a valid professional for a slot.",
       inputSchema: {
         account_id: optionalAccountId,
         contact_id: contactId,
+        professional_id: professionalId,
         service_id: serviceId,
-        professional_id: professionalId.optional(),
         partner_id: partnerId.optional(),
-        scheduled_at: isoDate.describe("ISO8601 datetime when the appointment starts"),
-        duration_minutes: z.number().int().positive().optional(),
+        scheduled_at: localDateTime,
+        ends_at: localDateTime.optional().describe("Optional end; defaults from service duration"),
         notes: z.string().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        conversation_display_id: conversationDisplayId.optional(),
+        pipeline_card_id: pipelineCardId.optional(),
+        custom_attributes: customAttributes,
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
-        const acc = resolveAccountId(account_id as number | undefined);
+        const acc = resolveAccountId(account_id);
         return client.post(`/api/v1/accounts/${acc}/appointments`, { appointment: body });
       }),
   );
@@ -117,18 +204,15 @@ export const register: RegisterFn = (server, client) => {
     "update_appointment",
     {
       title: "Update appointment",
-      description: "Update an appointment's scheduling, professional, notes or custom_attributes.",
+      description:
+        "Update only the mutable appointment fields accepted by Rails: scheduled_at, notes, partner_id, and custom_attributes. Use dedicated tools for status transitions.",
       inputSchema: {
         account_id: optionalAccountId,
         appointment_id: appointmentId,
-        scheduled_at: isoDate.optional(),
-        duration_minutes: z.number().int().positive().optional(),
-        professional_id: professionalId.optional(),
-        partner_id: partnerId.optional(),
-        service_id: serviceId.optional(),
-        notes: z.string().optional(),
-        status: appointmentStatus.optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        scheduled_at: localDateTime.optional(),
+        notes: z.string().nullable().optional(),
+        partner_id: partnerId.nullable().optional(),
+        custom_attributes: customAttributes,
       },
       annotations: { idempotentHint: true },
     },
@@ -146,23 +230,29 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Cancel appointment",
       description:
-        "Cancel an appointment (DELETE). Cancellation is logged and reminders/Google sync are revoked.",
-      inputSchema: { account_id: accountId, appointment_id: appointmentId },
+        "Soft-cancel an appointment, preserve it for audit/reporting, and return {success:true} after the API's 204 response.",
+      inputSchema: {
+        account_id: accountId,
+        appointment_id: appointmentId,
+        reason: z.string().optional().describe("Optional cancellation reason"),
+      },
       annotations: { destructiveHint: true },
     },
-    async ({ account_id, appointment_id }) =>
+    async ({ account_id, appointment_id, reason }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.delete(`/api/v1/accounts/${acc}/appointments/${appointment_id}`);
+        return client.delete(
+          `/api/v1/accounts/${acc}/appointments/${appointment_id}`,
+          reason === undefined ? undefined : { reason },
+        );
       }),
   );
 
-  // ── Status transitions ─────────────────────────────────────────────────────
   server.registerTool(
     "confirm_appointment",
     {
       title: "Confirm appointment",
-      description: "Mark an appointment as confirmed (status → confirmed).",
+      description: "Transition a scheduled appointment to confirmed and return {data}.",
       inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
     },
     async ({ account_id, appointment_id }) =>
@@ -176,8 +266,10 @@ export const register: RegisterFn = (server, client) => {
     "complete_appointment",
     {
       title: "Complete appointment",
-      description: "Mark an appointment as completed (after the service was performed).",
-      inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
+      description:
+        "Irreversibly transition a scheduled or confirmed appointment to completed and return {data}.",
+      inputSchema: { account_id: accountId, appointment_id: appointmentId },
+      annotations: { destructiveHint: true },
     },
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
@@ -190,8 +282,10 @@ export const register: RegisterFn = (server, client) => {
     "mark_appointment_no_show",
     {
       title: "Mark appointment as no-show",
-      description: "Mark an appointment as no_show when the contact didn't appear.",
-      inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
+      description:
+        "Irreversibly transition a scheduled or confirmed appointment to no_show and return {data}.",
+      inputSchema: { account_id: accountId, appointment_id: appointmentId },
+      annotations: { destructiveHint: true },
     },
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
@@ -201,33 +295,16 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
-    "sync_appointment_to_google_calendar",
-    {
-      title: "Sync appointment to Google Calendar",
-      description:
-        "Push an appointment to the connected Google Calendar (creates or updates the event).",
-      inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
-    },
-    async ({ account_id, appointment_id }) =>
-      safeHandler(() => {
-        const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/appointments/${appointment_id}/sync_to_google`);
-      }),
-  );
-
-  // ── Bulk action / collection endpoints ─────────────────────────────────────
-  server.registerTool(
     "bulk_appointment_action",
     {
       title: "Bulk appointment action",
-      description: "Apply an action (confirm, cancel, no_show) to many appointments at once.",
+      description:
+        "Confirm, cancel, or mark multiple appointments as no-show. The response reports succeeded IDs and per-record failures.",
       inputSchema: {
         account_id: accountId,
-        // Sent as `bulk_action` — `action` is reserved by Rails routing and
-        // would be ignored by the backend.
-        bulk_action: z.enum(["confirm", "cancel", "no_show"]).describe("Bulk action verb"),
-        ids: z.array(appointmentId).min(1).describe("Appointment IDs to act on"),
-        reason: z.string().optional().describe("Cancellation reason (when bulk_action='cancel')"),
+        bulk_action: z.enum(["confirm", "cancel", "no_show"]),
+        ids: z.array(appointmentId).min(1),
+        reason: z.string().optional().describe("Cancellation reason for the cancel action"),
       },
       annotations: { destructiveHint: true },
     },
@@ -242,15 +319,19 @@ export const register: RegisterFn = (server, client) => {
     "export_appointments_csv",
     {
       title: "Export appointments as CSV",
-      description: "Export appointments matching the filter as CSV (GET /appointments/export.csv).",
+      description:
+        "Export a privileged CSV using the same filters as list_appointments except pagination.",
       inputSchema: {
         account_id: optionalAccountId,
-        status: appointmentStatus.optional(),
+        status: appointmentStatusFilter.optional(),
         professional_id: professionalId.optional(),
         service_id: serviceId.optional(),
         partner_id: partnerId.optional(),
-        from: isoDate.optional(),
-        to: isoDate.optional(),
+        contact_id: contactId.optional(),
+        pipeline_card_id: pipelineCardId.optional(),
+        conversation_display_id: conversationDisplayId.optional(),
+        from: absoluteDateTime.optional(),
+        to: absoluteDateTime.optional(),
       },
       annotations: { readOnlyHint: true },
     },
@@ -264,16 +345,13 @@ export const register: RegisterFn = (server, client) => {
   server.registerTool(
     "get_appointments_metrics",
     {
-      title: "Get appointments metrics",
+      title: "Get appointment metrics",
       description:
-        "Return aggregated metrics for appointments (counts by status, no-show rate, etc.).",
+        "Return {data} with counts, no-show rate, revenue, professional/service breakdowns, daily series, and the effective date range.",
       inputSchema: {
         account_id: optionalAccountId,
-        from: isoDate.optional(),
-        to: isoDate.optional(),
-        professional_id: professionalId.optional(),
-        service_id: serviceId.optional(),
-        partner_id: partnerId.optional(),
+        from: absoluteDateTime.optional(),
+        to: absoluteDateTime.optional(),
       },
       annotations: { readOnlyHint: true },
     },
@@ -289,13 +367,15 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get appointment availability slots",
       description:
-        "List available time slots for booking, optionally filtered by service, professional, and date range.",
+        "Return {data:{date,professional_id,slots}} for one required professional and calendar date.",
       inputSchema: {
         account_id: optionalAccountId,
+        professional_id: professionalId,
+        date: calendarDate,
         service_id: serviceId.optional(),
-        professional_id: professionalId.optional(),
-        from: isoDate.optional().describe("ISO8601 datetime — start of search window"),
-        to: isoDate.optional().describe("ISO8601 datetime — end of search window"),
+        duration_minutes: durationMinutes
+          .optional()
+          .describe("Used when service_id is omitted; defaults to 60"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -306,19 +386,41 @@ export const register: RegisterFn = (server, client) => {
       }),
   );
 
-  // ── Services (catálogo de serviços) ────────────────────────────────────────
   server.registerTool(
-    "list_services",
+    "list_available_professionals",
     {
-      title: "List services",
-      description: "List all bookable services for the account.",
-      inputSchema: { account_id: optionalAccountId, ...pagination },
+      title: "List professionals available for a slot",
+      description:
+        "Return professionals whose working hours and existing appointments allow the requested slot; optionally restrict them to a service.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        scheduled_at: localDateTime,
+        service_id: serviceId.optional(),
+        duration_minutes: durationMinutes
+          .optional()
+          .describe("Used when service_id is omitted; defaults to 60"),
+      },
       annotations: { readOnlyHint: true },
     },
     async ({ account_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/services`, params);
+        return client.get(`/api/v1/accounts/${acc}/appointments/available_professionals`, params);
+      }),
+  );
+
+  server.registerTool(
+    "list_services",
+    {
+      title: "List services",
+      description: "Return {data} with all active, non-archived appointment services.",
+      inputSchema: { account_id: optionalAccountId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/services`);
       }),
   );
 
@@ -326,7 +428,7 @@ export const register: RegisterFn = (server, client) => {
     "get_service",
     {
       title: "Get service",
-      description: "Get a specific bookable service by ID.",
+      description: "Return {data} for a service, including its reminder templates.",
       inputSchema: { account_id: optionalAccountId, service_id: serviceId },
       annotations: { readOnlyHint: true },
     },
@@ -341,21 +443,24 @@ export const register: RegisterFn = (server, client) => {
     "create_service",
     {
       title: "Create service",
-      description: "Create a new bookable service (name, duration, price, etc.).",
+      description: "Create a bookable service and optionally configure its reminder templates.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
         description: z.string().optional(),
-        duration_minutes: z.number().int().positive().optional(),
-        price_cents: z.number().int().nonnegative().optional(),
-        currency: z.string().optional().describe("ISO 4217 currency code (e.g. BRL)"),
+        duration_minutes: durationMinutes,
+        default_price_cents: z.number().int().nonnegative().optional(),
+        currency: z.string().length(3).optional(),
+        color: z.string().optional(),
+        online_available: z.boolean().optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        custom_attributes: customAttributes,
+        reminder_templates: serviceReminderTemplates,
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
-        const acc = resolveAccountId(account_id as number | undefined);
+        const acc = resolveAccountId(account_id);
         return client.post(`/api/v1/accounts/${acc}/services`, { service: body });
       }),
   );
@@ -364,17 +469,21 @@ export const register: RegisterFn = (server, client) => {
     "update_service",
     {
       title: "Update service",
-      description: "Update a service (name, duration, price, active flag).",
+      description:
+        "Update a service. reminder_templates replaces the list when present, [] clears it, and omission preserves it.",
       inputSchema: {
         account_id: optionalAccountId,
         service_id: serviceId,
-        name: z.string().optional(),
-        description: z.string().optional(),
-        duration_minutes: z.number().int().positive().optional(),
-        price_cents: z.number().int().nonnegative().optional(),
-        currency: z.string().optional(),
+        name: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        duration_minutes: durationMinutes.optional(),
+        default_price_cents: z.number().int().nonnegative().optional(),
+        currency: z.string().length(3).optional(),
+        color: z.string().optional(),
+        online_available: z.boolean().optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        custom_attributes: customAttributes,
+        reminder_templates: serviceReminderTemplates,
       },
       annotations: { idempotentHint: true },
     },
@@ -389,7 +498,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_service",
     {
       title: "Delete service",
-      description: "Delete a service. Existing appointments referencing it are NOT deleted.",
+      description:
+        "Soft-delete a service while preserving historical appointments; returns {success:true} after 204.",
       inputSchema: { account_id: accountId, service_id: serviceId },
       annotations: { destructiveHint: true },
     },
@@ -400,19 +510,19 @@ export const register: RegisterFn = (server, client) => {
       }),
   );
 
-  // ── Professionals ──────────────────────────────────────────────────────────
   server.registerTool(
     "list_professionals",
     {
       title: "List professionals",
-      description: "List professionals (agents that perform appointments) for the account.",
-      inputSchema: { account_id: optionalAccountId, ...pagination },
+      description:
+        "Return {data} with all active, non-archived professionals and their service IDs.",
+      inputSchema: { account_id: optionalAccountId },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, ...params }) =>
+    async ({ account_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/professionals`, params);
+        return client.get(`/api/v1/accounts/${acc}/professionals`);
       }),
   );
 
@@ -420,7 +530,7 @@ export const register: RegisterFn = (server, client) => {
     "get_professional",
     {
       title: "Get professional",
-      description: "Get a specific professional, including their service list and working hours.",
+      description: "Return {data} with a professional, service IDs, working hours, and avatar URL.",
       inputSchema: { account_id: optionalAccountId, professional_id: professionalId },
       annotations: { readOnlyHint: true },
     },
@@ -436,22 +546,25 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create professional",
       description:
-        "Register a new professional (associated with an agent user, partner, services).",
+        "Create a professional, set working hours, and optionally replace offered services.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
+        specialty: z.string().optional(),
+        registry: z.string().optional(),
         email: z.string().optional(),
-        user_id: z.number().int().positive().optional().describe("Linked agent user ID"),
-        partner_id: partnerId.optional(),
-        service_ids: z.array(serviceId).optional(),
-        working_hours: z.record(z.string(), z.unknown()).optional(),
+        phone: z.string().optional(),
+        color: z.string().optional(),
+        buffer_minutes: z.number().int().nonnegative().optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        working_hours: workingHours.optional(),
+        custom_attributes: customAttributes,
+        service_ids: serviceIds,
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
-        const acc = resolveAccountId(account_id as number | undefined);
+        const acc = resolveAccountId(account_id);
         return client.post(`/api/v1/accounts/${acc}/professionals`, { professional: body });
       }),
   );
@@ -460,17 +573,22 @@ export const register: RegisterFn = (server, client) => {
     "update_professional",
     {
       title: "Update professional",
-      description: "Update a professional's services, working hours, or active state.",
+      description:
+        "Update a professional. service_ids replaces offered services when present; omission preserves them.",
       inputSchema: {
         account_id: optionalAccountId,
         professional_id: professionalId,
-        name: z.string().optional(),
-        email: z.string().optional(),
-        partner_id: partnerId.optional(),
-        service_ids: z.array(serviceId).optional(),
-        working_hours: z.record(z.string(), z.unknown()).optional(),
+        name: z.string().min(1).optional(),
+        specialty: z.string().nullable().optional(),
+        registry: z.string().nullable().optional(),
+        email: z.string().nullable().optional(),
+        phone: z.string().nullable().optional(),
+        color: z.string().optional(),
+        buffer_minutes: z.number().int().nonnegative().optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        working_hours: workingHours.optional(),
+        custom_attributes: customAttributes,
+        service_ids: serviceIds,
       },
       annotations: { idempotentHint: true },
     },
@@ -487,7 +605,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_professional",
     {
       title: "Delete professional",
-      description: "Delete a professional. Existing appointments referencing them are not removed.",
+      description:
+        "Soft-delete a professional while preserving historical appointments; returns {success:true} after 204.",
       inputSchema: { account_id: accountId, professional_id: professionalId },
       annotations: { destructiveHint: true },
     },
@@ -502,13 +621,16 @@ export const register: RegisterFn = (server, client) => {
     "get_professional_availability",
     {
       title: "Get professional availability",
-      description: "Get a professional's available time slots within a date window.",
+      description:
+        "Return {data:{date,professional_id,slots}} for a professional. date defaults to the server's current date.",
       inputSchema: {
         account_id: optionalAccountId,
         professional_id: professionalId,
-        from: isoDate.optional(),
-        to: isoDate.optional(),
+        date: calendarDate.optional(),
         service_id: serviceId.optional(),
+        duration_minutes: durationMinutes
+          .optional()
+          .describe("Used when service_id is omitted; defaults to 60"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -522,19 +644,18 @@ export const register: RegisterFn = (server, client) => {
       }),
   );
 
-  // ── Partners (multi-location) ──────────────────────────────────────────────
   server.registerTool(
     "list_partners",
     {
       title: "List partners",
-      description: "List partner locations (used for multi-site operations).",
-      inputSchema: { account_id: optionalAccountId, ...pagination },
+      description: "Return {data} with all active, non-archived appointment partners.",
+      inputSchema: { account_id: optionalAccountId },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, ...params }) =>
+    async ({ account_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/partners`, params);
+        return client.get(`/api/v1/accounts/${acc}/partners`);
       }),
   );
 
@@ -542,7 +663,7 @@ export const register: RegisterFn = (server, client) => {
     "get_partner",
     {
       title: "Get partner",
-      description: "Get a specific partner location by ID.",
+      description: "Return {data} for an appointment partner.",
       inputSchema: { account_id: optionalAccountId, partner_id: partnerId },
       annotations: { readOnlyHint: true },
     },
@@ -557,20 +678,18 @@ export const register: RegisterFn = (server, client) => {
     "create_partner",
     {
       title: "Create partner",
-      description: "Create a new partner location (address, contact info).",
+      description: "Create an appointment partner such as a convenio, insurer, or health plan.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
-        address: z.string().optional(),
-        phone_number: z.string().optional(),
-        email: z.string().optional(),
+        kind: partnerKind.optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        settings: z.record(z.string(), z.unknown()).optional(),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
-        const acc = resolveAccountId(account_id as number | undefined);
+        const acc = resolveAccountId(account_id);
         return client.post(`/api/v1/accounts/${acc}/partners`, { partner: body });
       }),
   );
@@ -579,16 +698,14 @@ export const register: RegisterFn = (server, client) => {
     "update_partner",
     {
       title: "Update partner",
-      description: "Update a partner location's details.",
+      description: "Update a partner's name, kind, active state, or settings.",
       inputSchema: {
         account_id: optionalAccountId,
         partner_id: partnerId,
-        name: z.string().optional(),
-        address: z.string().optional(),
-        phone_number: z.string().optional(),
-        email: z.string().optional(),
+        name: z.string().min(1).optional(),
+        kind: partnerKind.optional(),
         active: z.boolean().optional(),
-        custom_attributes: z.record(z.string(), z.unknown()).optional(),
+        settings: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { idempotentHint: true },
     },
@@ -603,7 +720,8 @@ export const register: RegisterFn = (server, client) => {
     "delete_partner",
     {
       title: "Delete partner",
-      description: "Delete a partner location.",
+      description:
+        "Soft-delete a partner while preserving historical appointment links; returns {success:true} after 204.",
       inputSchema: { account_id: accountId, partner_id: partnerId },
       annotations: { destructiveHint: true },
     },
