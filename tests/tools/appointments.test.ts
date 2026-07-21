@@ -441,6 +441,24 @@ describe("appointments tools — exact catalog contracts", () => {
     ).toBe(false);
   });
 
+  it.each(["create_service", "update_service"])(
+    "%s rejects the removed Meta template identifier",
+    (toolName) => {
+      const { tools } = setup();
+      const reminderTemplatesSchema = tools.get(toolName)?.config.inputSchema?.reminder_templates;
+
+      expect(
+        reminderTemplatesSchema?.safeParse([
+          {
+            minutes_before: 30,
+            body_template: "Lembrete",
+            whatsapp_template_id: 123,
+          },
+        ]).success,
+      ).toBe(false);
+    },
+  );
+
   it("uses service_ids for professionals and validates working hours", async () => {
     const { tools, client } = setup();
     const tool = tools.get("create_professional");

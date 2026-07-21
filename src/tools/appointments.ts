@@ -103,7 +103,6 @@ const serviceReminderTemplate = z
     body_template: z.string().min(1),
     active: z.boolean().optional(),
     send_via: z.literal("whatsapp").default("whatsapp"),
-    whatsapp_template_id: z.number().int().positive().nullable().optional(),
   })
   .strict()
   .refine(
