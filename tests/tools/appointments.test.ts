@@ -8,6 +8,7 @@ type Handler = (args: Record<string, unknown>) => Promise<unknown>;
 interface RegisteredTool {
   config: {
     annotations?: Record<string, unknown>;
+    description?: string;
     inputSchema?: Record<string, z.ZodTypeAny>;
   };
   handler: Handler;
@@ -195,6 +196,26 @@ describe("appointments tools — exact appointment contract", () => {
       tool?.config.inputSchema?.scheduled_at.safeParse("2026-08-10T10:00:00-03:00").success,
     ).toBe(true);
     expect(tool?.config.inputSchema?.scheduled_at.safeParse("not-a-date").success).toBe(false);
+    expect(
+      parseInput(tool, {
+        account_id: 7,
+        contact_id: 11,
+        professional_id: 12,
+        service_id: 13,
+        scheduled_at: "2026-08-10T10:00:00-03:00",
+        partner_id: null,
+        ends_at: null,
+        notes: null,
+        conversation_display_id: null,
+        pipeline_card_id: null,
+      }).success,
+    ).toBe(true);
+    expect(tool?.config.inputSchema?.conversation_display_id.safeParse(2_147_483_647).success).toBe(
+      true,
+    );
+    expect(tool?.config.inputSchema?.conversation_display_id.safeParse(2_147_483_648).success).toBe(
+      false,
+    );
 
     const args = {
       account_id: 7,
@@ -256,6 +277,15 @@ describe("appointments tools — exact appointment contract", () => {
     });
   });
 
+  it("describes the exact show projection without claiming materialized reminders", () => {
+    const { tools } = setup();
+    const description = tools.get("get_appointment")?.config.description;
+
+    expect(description).toContain("exact appointment projection");
+    expect(description).toContain("compact contact");
+    expect(description).toContain("Materialized reminders are not included");
+  });
+
   it("passes the cancellation reason as the top-level DELETE query parameter", async () => {
     const { tools, client } = setup();
     const tool = tools.get("cancel_appointment");
@@ -280,19 +310,38 @@ describe("appointments tools — exact appointment contract", () => {
     expect(client.post).toHaveBeenCalledWith(path);
   });
 
-  it("marks terminal status transitions as destructive", () => {
+  it("publishes the factual idempotent and destructive status-transition hints", () => {
     const { tools } = setup();
+    expect(tools.get("confirm_appointment")?.config.annotations?.idempotentHint).toBe(true);
+    expect(tools.get("complete_appointment")?.config.annotations?.idempotentHint).toBe(true);
+    expect(tools.get("mark_appointment_no_show")?.config.annotations?.idempotentHint).toBe(true);
     expect(tools.get("complete_appointment")?.config.annotations?.destructiveHint).toBe(true);
     expect(tools.get("mark_appointment_no_show")?.config.annotations?.destructiveHint).toBe(true);
     expect(tools.get("confirm_appointment")?.config.annotations?.destructiveHint).toBeUndefined();
   });
 
-  it("sends the Rails-safe bulk_action key and exact action vocabulary", async () => {
+  it("enforces the bounded unique ID contract and exact bulk action vocabulary", async () => {
     const { tools, client } = setup();
     const tool = tools.get("bulk_appointment_action");
+    const ids = tool?.config.inputSchema?.ids;
 
     expect(tool?.config.inputSchema?.bulk_action.safeParse("confirm").success).toBe(true);
     expect(tool?.config.inputSchema?.bulk_action.safeParse("complete").success).toBe(false);
+    expect(ids?.safeParse([]).success).toBe(false);
+    expect(ids?.safeParse(Array.from({ length: 100 }, (_, index) => index + 1)).success).toBe(true);
+    expect(ids?.safeParse(Array.from({ length: 101 }, (_, index) => index + 1)).success).toBe(
+      false,
+    );
+    expect(ids?.safeParse([41, 41]).success).toBe(false);
+    expect(ids?.safeParse([0]).success).toBe(false);
+    expect(ids?.safeParse([1.5]).success).toBe(false);
+    expect(ids?.safeParse(["41"]).success).toBe(false);
+    expect(ids?.safeParse([Number.MAX_SAFE_INTEGER]).success).toBe(true);
+    expect(ids?.safeParse([Number.MAX_SAFE_INTEGER + 1]).success).toBe(false);
+    expect(tool?.config.inputSchema?.reason.safeParse(null).success).toBe(true);
+    expect(tool?.config.description).toContain("200 {data:{action,count,succeeded,failed}}");
+    expect(tool?.config.description).toContain("404 before any action");
+    expect(tool?.config.description).toContain("malformed input returns 422");
     await tool?.handler({
       account_id: 7,
       bulk_action: "cancel",

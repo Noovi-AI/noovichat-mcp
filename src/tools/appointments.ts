@@ -17,19 +17,25 @@ import { z } from "zod";
 import type { RegisterFn } from "../types.js";
 import {
   accountId,
-  contactId,
-  conversationDisplayId,
   customAttributes,
   optionalAccountId,
   resolveAccountId,
   safeHandler,
 } from "./_helpers.js";
 
-const appointmentId = z.number().int().positive().describe("Appointment ID");
-const professionalId = z.number().int().positive().describe("Professional ID");
-const serviceId = z.number().int().positive().describe("Service ID");
-const partnerId = z.number().int().positive().describe("Partner ID");
-const pipelineCardId = z.number().int().positive().describe("Pipeline card ID");
+const databaseId = z.number().int().positive().safe();
+const appointmentId = databaseId.describe("Appointment ID");
+const contactId = databaseId.describe("Contact ID");
+const professionalId = databaseId.describe("Professional ID");
+const serviceId = databaseId.describe("Service ID");
+const partnerId = databaseId.describe("Partner ID");
+const pipelineCardId = databaseId.describe("Pipeline card ID");
+const conversationDisplayId = z
+  .number()
+  .int()
+  .positive()
+  .max(2_147_483_647)
+  .describe("Conversation display ID (per-account 32-bit sequence)");
 
 const appointmentStatus = z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]);
 
@@ -127,6 +133,15 @@ const serviceIds = z
 
 const partnerKind = z.enum(["convenio", "seguro", "plano", "outros"]);
 
+const bulkAppointmentIds = z
+  .array(appointmentId)
+  .min(1)
+  .max(100)
+  .refine((ids) => new Set(ids).size === ids.length, {
+    message: "Appointment IDs must be unique",
+  })
+  .describe("Between 1 and 100 unique appointment IDs");
+
 export const register: RegisterFn = (server, client) => {
   server.registerTool(
     "list_appointments",
@@ -161,7 +176,7 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get appointment",
       description:
-        "Return {data} with an appointment and its contact, professional, service, and optional partner.",
+        "Return {data} with the exact appointment projection and compact contact, professional, service, and optional partner projections. Materialized reminders are not included.",
       inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
       annotations: { readOnlyHint: true },
     },
@@ -177,18 +192,21 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create appointment",
       description:
-        "Create a scheduled appointment. professional_id is required; use list_available_professionals to find a valid professional for a slot.",
+        "Create a scheduled appointment and return 201 {data} with the appointment projection. professional_id is required; use list_available_professionals to find a valid professional for a slot.",
       inputSchema: {
         account_id: optionalAccountId,
         contact_id: contactId,
         professional_id: professionalId,
         service_id: serviceId,
-        partner_id: partnerId.optional(),
+        partner_id: partnerId.nullable().optional(),
         scheduled_at: localDateTime,
-        ends_at: localDateTime.optional().describe("Optional end; defaults from service duration"),
-        notes: z.string().optional(),
-        conversation_display_id: conversationDisplayId.optional(),
-        pipeline_card_id: pipelineCardId.optional(),
+        ends_at: localDateTime
+          .nullable()
+          .optional()
+          .describe("Optional end; null or omission defaults from service duration"),
+        notes: z.string().nullable().optional(),
+        conversation_display_id: conversationDisplayId.nullable().optional(),
+        pipeline_card_id: pipelineCardId.nullable().optional(),
         custom_attributes: customAttributes,
       },
     },
@@ -204,7 +222,7 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Update appointment",
       description:
-        "Update only the mutable appointment fields accepted by Rails: scheduled_at, notes, partner_id, and custom_attributes. Use dedicated tools for status transitions.",
+        "Update only scheduled_at, notes, partner_id, or custom_attributes and return 200 {data}. Use dedicated tools for status transitions.",
       inputSchema: {
         account_id: optionalAccountId,
         appointment_id: appointmentId,
@@ -251,8 +269,10 @@ export const register: RegisterFn = (server, client) => {
     "confirm_appointment",
     {
       title: "Confirm appointment",
-      description: "Transition a scheduled appointment to confirmed and return {data}.",
+      description:
+        "Transition a scheduled appointment to confirmed and return 200 {data}; repeating an already-confirmed appointment is idempotent, while terminal statuses return 422.",
       inputSchema: { account_id: optionalAccountId, appointment_id: appointmentId },
+      annotations: { idempotentHint: true },
     },
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
@@ -266,9 +286,9 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Complete appointment",
       description:
-        "Irreversibly transition a scheduled or confirmed appointment to completed and return {data}.",
+        "Transition a scheduled or confirmed appointment to completed and return 200 {data}; repeating an already-completed appointment is idempotent, while cancelled or no_show returns 422.",
       inputSchema: { account_id: accountId, appointment_id: appointmentId },
-      annotations: { destructiveHint: true },
+      annotations: { destructiveHint: true, idempotentHint: true },
     },
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
@@ -282,9 +302,9 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Mark appointment as no-show",
       description:
-        "Irreversibly transition a scheduled or confirmed appointment to no_show and return {data}.",
+        "Transition a scheduled or confirmed appointment to no_show and return 200 {data}; repeating an already-no_show appointment is idempotent, while cancelled or completed returns 422.",
       inputSchema: { account_id: accountId, appointment_id: appointmentId },
-      annotations: { destructiveHint: true },
+      annotations: { destructiveHint: true, idempotentHint: true },
     },
     async ({ account_id, appointment_id }) =>
       safeHandler(() => {
@@ -298,12 +318,16 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Bulk appointment action",
       description:
-        "Confirm, cancel, or mark multiple appointments as no-show. The response reports succeeded IDs and per-record failures.",
+        "Apply confirm, cancel, or no_show to 1-100 unique appointment IDs. Accepted batches return 200 {data:{action,count,succeeded,failed}}, including per-record transition failures; an inaccessible ID returns 404 before any action, and malformed input returns 422.",
       inputSchema: {
         account_id: accountId,
         bulk_action: z.enum(["confirm", "cancel", "no_show"]),
-        ids: z.array(appointmentId).min(1),
-        reason: z.string().optional().describe("Cancellation reason for the cancel action"),
+        ids: bulkAppointmentIds,
+        reason: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Nullable cancellation reason for the cancel action"),
       },
       annotations: { destructiveHint: true },
     },
