@@ -99,14 +99,42 @@ const workingHours = z
   .strict()
   .describe("Working-hour windows keyed by mon, tue, wed, thu, fri, sat, and sun");
 
-const reminderOffset = z.number().int().nonnegative().default(0);
+const maximumReminderOffsetMinutes = 2_147_483_647;
+const reminderDaysBefore = z.number().int().nonnegative().max(1_491_308).default(0);
+const reminderHoursBefore = z.number().int().nonnegative().max(35_791_394).default(0);
+const reminderMinutesBefore = z
+  .number()
+  .int()
+  .nonnegative()
+  .max(maximumReminderOffsetMinutes)
+  .default(0);
+const maximumReminderBodyCharacters = 4_096;
+const reminderBodyFitsCharacterLimit = (body: string) => {
+  let characters = 0;
+  for (const _character of body) {
+    characters += 1;
+    if (characters > maximumReminderBodyCharacters) return false;
+  }
+  return true;
+};
+const reminderBodyTemplate = z
+  .string()
+  .min(1)
+  .refine(
+    reminderBodyFitsCharacterLimit,
+    `Reminder body must contain at most ${maximumReminderBodyCharacters} characters`,
+  )
+  .refine((body) => body.trim().length > 0, "Reminder body cannot be blank")
+  .describe(
+    "Literal one-pass template of 1 to 4,096 Unicode characters. Supported placeholders are exactly {{paciente}}, {{cliente}}, {{profissional}}, {{servico}}, {{data}}, {{hora}}, {{duracao}}, {{valor}}, and {{empresa}}; unknown placeholders remain unchanged.",
+  );
 const serviceReminderTemplate = z
   .object({
-    label: z.string().optional(),
-    days_before: reminderOffset,
-    hours_before: reminderOffset,
-    minutes_before: reminderOffset,
-    body_template: z.string().min(1),
+    label: z.string().nullable().optional(),
+    days_before: reminderDaysBefore,
+    hours_before: reminderHoursBefore,
+    minutes_before: reminderMinutesBefore,
+    body_template: reminderBodyTemplate,
     active: z.boolean().optional(),
     send_via: z.literal("whatsapp").default("whatsapp"),
   })
@@ -119,12 +147,25 @@ const serviceReminderTemplate = z
       message: "At least one reminder offset must be greater than zero",
       path: ["minutes_before"],
     },
+  )
+  .refine(
+    (template) =>
+      (template.days_before ?? 0) * 1_440 +
+        (template.hours_before ?? 0) * 60 +
+        (template.minutes_before ?? 0) <=
+      maximumReminderOffsetMinutes,
+    {
+      message: `Total reminder offset must not exceed ${maximumReminderOffsetMinutes} minutes`,
+      path: ["minutes_before"],
+    },
   );
 
 const serviceReminderTemplates = z
   .array(serviceReminderTemplate)
   .optional()
-  .describe("Replacement list of reminder templates; omit to preserve and pass [] to clear");
+  .describe(
+    "Replacement list of reminder templates; omit to preserve and pass [] to clear. Each body_template is 1 to 4,096 Unicode characters and supports exactly {{paciente}}, {{cliente}}, {{profissional}}, {{servico}}, {{data}}, {{hora}}, {{duracao}}, {{valor}}, and {{empresa}}.",
+  );
 
 const serviceIds = z
   .array(serviceId)

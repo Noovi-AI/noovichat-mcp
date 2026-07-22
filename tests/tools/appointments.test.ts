@@ -508,6 +508,72 @@ describe("appointments tools — exact catalog contracts", () => {
     },
   );
 
+  it.each(["create_service", "update_service"])(
+    "%s enforces the reminder offset, body, nullable label, and placeholder contract",
+    (toolName) => {
+      const { tools } = setup();
+      const reminderTemplatesSchema = tools.get(toolName)?.config.inputSchema?.reminder_templates;
+      const reminder = (overrides: Record<string, unknown>) => [
+        { minutes_before: 1, body_template: "Lembrete", ...overrides },
+      ];
+
+      expect(reminderTemplatesSchema?.safeParse(reminder({ label: null })).success).toBe(true);
+      expect(
+        reminderTemplatesSchema?.safeParse(
+          reminder({ days_before: 1_491_308, minutes_before: 127 }),
+        ).success,
+      ).toBe(true);
+      expect(
+        reminderTemplatesSchema?.safeParse(
+          reminder({ hours_before: 35_791_394, minutes_before: 7 }),
+        ).success,
+      ).toBe(true);
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ minutes_before: 2_147_483_647 })).success,
+      ).toBe(true);
+
+      expect(reminderTemplatesSchema?.safeParse(reminder({ days_before: 1_491_309 })).success).toBe(
+        false,
+      );
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ hours_before: 35_791_395 })).success,
+      ).toBe(false);
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ minutes_before: 2_147_483_648 })).success,
+      ).toBe(false);
+      expect(
+        reminderTemplatesSchema?.safeParse(
+          reminder({ days_before: 1_491_308, minutes_before: 128 }),
+        ).success,
+      ).toBe(false);
+      expect(
+        reminderTemplatesSchema?.safeParse(
+          reminder({ hours_before: 35_791_394, minutes_before: 8 }),
+        ).success,
+      ).toBe(false);
+      expect(reminderTemplatesSchema?.safeParse(reminder({ body_template: "" })).success).toBe(
+        false,
+      );
+      expect(reminderTemplatesSchema?.safeParse(reminder({ body_template: "   " })).success).toBe(
+        false,
+      );
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ body_template: "x".repeat(4_096) })).success,
+      ).toBe(true);
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ body_template: "x".repeat(4_097) })).success,
+      ).toBe(false);
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ body_template: "😀".repeat(4_096) })).success,
+      ).toBe(true);
+      expect(
+        reminderTemplatesSchema?.safeParse(reminder({ body_template: "😀".repeat(4_097) })).success,
+      ).toBe(false);
+      expect(reminderTemplatesSchema?.description).toContain("4,096 Unicode characters");
+      expect(reminderTemplatesSchema?.description).toContain("{{valor}}");
+    },
+  );
+
   it("uses service_ids for professionals and validates working hours", async () => {
     const { tools, client } = setup();
     const tool = tools.get("create_professional");
