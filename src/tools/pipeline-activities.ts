@@ -34,6 +34,72 @@ const sequenceId = z.number().int().positive().describe("Activity sequence ID");
 const templateId = z.number().int().positive().describe("Activity template ID");
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
 
+const sequenceTriggerType = z
+  .enum(["manual", "stage_change", "time_based", "condition_based"])
+  .describe("Sequence trigger type");
+
+const sequenceStageReference = z.union([z.string().min(1), z.number().int().positive()]);
+const sequenceEligibilityFilter = z
+  .object({
+    stage_id: sequenceStageReference.optional(),
+    days_in_stage: z.number().int().min(0).max(36_500).optional(),
+  })
+  .strict();
+const sequenceTriggerConditions = z
+  .union([
+    z.object({}).strict().describe("manual: empty object"),
+    z
+      .object({
+        funnel_id: z.number().int().positive().optional(),
+        from_stage_id: sequenceStageReference.optional(),
+        to_stage_id: sequenceStageReference,
+      })
+      .strict()
+      .describe("stage_change: destination stage plus optional origin and account pipeline"),
+    z
+      .union([
+        z
+          .object({
+            cron_expression: z.string().min(1).max(255),
+            eligibility_filter: sequenceEligibilityFilter.optional(),
+          })
+          .strict(),
+        z
+          .object({
+            every_n_days: z.number().int().min(1).max(365),
+            eligibility_filter: sequenceEligibilityFilter.optional(),
+          })
+          .strict(),
+      ])
+      .describe(
+        "time_based: exactly one cadence. cron_expression uses five numeric fields " +
+          "(minute 0-59, hour 0-23, day 1-31, month 1-12, weekday 0-7); " +
+          "the API accepts *, */n, comma lists and ascending ranges.",
+      ),
+    z
+      .object({
+        field: z.enum([
+          "lead_score",
+          "qualification_score",
+          "pipeline_stage",
+          "expected_revenue",
+          "priority",
+        ]),
+        operator: z.enum(["==", "!=", ">", "<", ">=", "<=", "contains", "not_contains"]),
+        value: z.union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.array(z.unknown()),
+          z.record(z.string(), z.unknown()),
+        ]),
+        conjunction: z.enum(["and", "or"]).optional(),
+      })
+      .strict()
+      .describe("condition_based: supported card field, comparison operator and non-null value"),
+  ])
+  .describe("Conditions matching trigger_type; invalid combinations return HTTP 422");
+
 // Backend enum: PipelineActivity::ACTIVITY_TYPES
 const activityType = z
   .enum(["call", "email", "meeting", "task", "note", "demo", "follow_up"])
@@ -357,6 +423,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         active: z.boolean().optional(),
+        trigger_type: sequenceTriggerType.optional(),
         ...pagination,
       },
       annotations: { readOnlyHint: true },
@@ -387,14 +454,19 @@ export const register: RegisterFn = (server, client) => {
     "create_activity_sequence",
     {
       title: "Create activity sequence",
-      description: "Create a new reusable activity sequence.",
+      description:
+        "Create a reusable sequence definition. A webhook step can only be created by an " +
+        "account administrator.",
       inputSchema: {
         account_id: optionalAccountId,
-        name: z.string().min(1),
+        name: z.string().min(1).max(255),
         description: z.string().optional(),
+        trigger_type: sequenceTriggerType.optional(),
+        trigger_conditions: sequenceTriggerConditions.optional(),
         active: z.boolean().optional(),
         steps: z
           .array(z.record(z.string(), z.unknown()))
+          .min(1)
           .describe(
             "Ordered step definitions. Each step: { step_number, activity_type, " +
               "title, description?, delay_days?, delay_hours?, duration?, assign_to? }.",
@@ -415,14 +487,19 @@ export const register: RegisterFn = (server, client) => {
     "update_activity_sequence",
     {
       title: "Update activity sequence",
-      description: "Update sequence name, steps or active flag.",
+      description:
+        "Update sequence metadata, trigger, steps or active state. Replacing steps is rejected " +
+        "while executions are active. Any update to a definition that contains a webhook step, " +
+        "or that adds one, requires an account administrator.",
       inputSchema: {
         account_id: optionalAccountId,
         sequence_id: sequenceId,
-        name: z.string().optional(),
+        name: z.string().min(1).max(255).optional(),
         description: z.string().optional(),
+        trigger_type: sequenceTriggerType.optional(),
+        trigger_conditions: sequenceTriggerConditions.optional(),
         active: z.boolean().optional(),
-        steps: z.array(z.record(z.string(), z.unknown())).optional(),
+        steps: z.array(z.record(z.string(), z.unknown())).min(1).optional(),
       },
       annotations: { idempotentHint: true },
     },
@@ -455,7 +532,9 @@ export const register: RegisterFn = (server, client) => {
     "activate_activity_sequence",
     {
       title: "Activate activity sequence",
-      description: "Mark a sequence as active so it becomes available for use.",
+      description:
+        "Mark a sequence as active so it can receive executions. Definitions containing a " +
+        "webhook step require an account administrator.",
       inputSchema: { account_id: optionalAccountId, sequence_id: sequenceId },
     },
     async ({ account_id, sequence_id }) =>
@@ -471,7 +550,9 @@ export const register: RegisterFn = (server, client) => {
     "deactivate_activity_sequence",
     {
       title: "Deactivate activity sequence",
-      description: "Mark a sequence as inactive (hidden from the picker but not deleted).",
+      description:
+        "Mark a sequence as inactive and pause its active executions. Definitions containing a " +
+        "webhook step require an account administrator.",
       inputSchema: { account_id: optionalAccountId, sequence_id: sequenceId },
     },
     async ({ account_id, sequence_id }) =>

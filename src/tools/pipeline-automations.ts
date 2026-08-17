@@ -154,7 +154,10 @@ export const register: RegisterFn = (server, client) => {
       title: "Create pipeline automation",
       description:
         "Create an automation. Provide `flow` (a FlowBuilder graph with nodes) — " +
-        "flow-based automations carry their trigger/conditions/actions inside the graph.",
+        "flow-based automations carry their trigger/conditions/actions inside the graph. " +
+        "`flow.nodes` must be non-empty: an automation the engine cannot execute is " +
+        "refused with 422, instead of being saved as a rule that shows up active and " +
+        "never runs.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
@@ -191,7 +194,12 @@ export const register: RegisterFn = (server, client) => {
     "update_pipeline_automation",
     {
       title: "Update pipeline automation",
-      description: "Update name, description, active flag, trigger config or flow graph.",
+      description:
+        "Update name, description, active flag, trigger config or flow graph. Two edits " +
+        "are refused with 422 because they would leave the automation active but " +
+        "unexecutable: emptying `flow.nodes`, and switching `active` to true on an " +
+        "automation that has no flow. Deactivating a legacy flowless automation is " +
+        "always allowed.",
       inputSchema: {
         account_id: optionalAccountId,
         automation_id: automationId,

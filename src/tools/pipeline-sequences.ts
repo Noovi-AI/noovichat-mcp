@@ -24,13 +24,7 @@
 
 import { z } from "zod";
 import type { RegisterFn } from "../types.js";
-import {
-  accountId,
-  optionalAccountId,
-  pagination,
-  resolveAccountId,
-  safeHandler,
-} from "./_helpers.js";
+import { accountId, optionalAccountId, resolveAccountId, safeHandler } from "./_helpers.js";
 
 const cardIdInput = z.number().int().positive().describe("Pipeline card ID");
 const cardSequenceId = z
@@ -44,6 +38,38 @@ const sequenceDefinitionId = z
   .positive()
   .describe("Pipeline sequence definition ID");
 
+const externalContextKeys = [
+  "trigger_source",
+  "metadata",
+  "external_id",
+  "source_url",
+  "notes",
+] as const;
+
+const externalSequenceContext = z
+  .record(z.string(), z.unknown())
+  .superRefine((context, refinement) => {
+    const unsupportedKeys = Object.keys(context).filter(
+      (key) => !externalContextKeys.includes(key as (typeof externalContextKeys)[number]),
+    );
+    if (unsupportedKeys.length > 0) {
+      refinement.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Unsupported context keys: ${unsupportedKeys.join(", ")}`,
+      });
+    }
+
+    if (Buffer.byteLength(JSON.stringify(context), "utf8") > 10_000) {
+      refinement.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "context exceeds 10000 bytes",
+      });
+    }
+  })
+  .describe(
+    "Optional trace context. Accepted keys: trigger_source, metadata, external_id, source_url and notes (maximum 10,000 JSON bytes).",
+  );
+
 export const register: RegisterFn = (server, client) => {
   // ── Card sequences (executions attached to a card) ─────────────────────────
   server.registerTool(
@@ -51,18 +77,17 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "List sequences attached to a card",
       description:
-        "List all sequence executions running on a given pipeline card. Includes status (running, paused, completed) and progress per step.",
+        "List every sequence execution attached to a pipeline card, newest first, with status and step progress.",
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardIdInput,
-        ...pagination,
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, card_id, ...params }) =>
+    async ({ account_id, card_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, params);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`);
       }),
   );
 
@@ -74,21 +99,14 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardIdInput,
-        sequence_definition_id: sequenceDefinitionId,
-        context: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Variables for step rendering (e.g., scheduled overrides, custom data)"),
+        definition_id: sequenceDefinitionId,
       },
     },
-    async ({ account_id, card_id, sequence_definition_id, context }) =>
+    async ({ account_id, card_id, definition_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        // card_sequences_controller reads `definition_id` (not sequence_definition_id),
-        // and the definition must be an ACTIVE pipeline sequence definition.
         return client.post(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences`, {
-          definition_id: sequence_definition_id,
-          context,
+          definition_id,
         });
       }),
   );
@@ -125,7 +143,6 @@ export const register: RegisterFn = (server, client) => {
         card_id: cardIdInput,
         sequence_id: cardSequenceId,
       },
-      annotations: { idempotentHint: true },
     },
     async ({ account_id, card_id, sequence_id }) =>
       safeHandler(() => {
@@ -146,7 +163,6 @@ export const register: RegisterFn = (server, client) => {
         card_id: cardIdInput,
         sequence_id: cardSequenceId,
       },
-      annotations: { idempotentHint: true },
     },
     async ({ account_id, card_id, sequence_id }) =>
       safeHandler(() => {
@@ -167,19 +183,13 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         card_id: cardIdInput,
         sequence_id: cardSequenceId,
-        outcome: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Step-specific outcome data (e.g., reply received, click tracked)"),
       },
-      annotations: { idempotentHint: true },
     },
-    async ({ account_id, card_id, sequence_id, ...body }) =>
+    async ({ account_id, card_id, sequence_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.patch(
           `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/sequences/${sequence_id}/complete_step`,
-          body,
         );
       }),
   );
@@ -189,19 +199,12 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Externally start a sequence on a card",
       description:
-        "Collection-level trigger used by n8n/Zapier/external workflows to start a sequence on a card. Same effect as start_card_sequence but accepts a richer external_payload for traceability.",
+        "Start an active sequence definition through the account-scoped integration endpoint and optionally stamp an allowlisted trace context.",
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardIdInput,
-        sequence_definition_id: sequenceDefinitionId,
-        source: z
-          .string()
-          .optional()
-          .describe("External trigger source identifier (e.g., 'n8n:flow-42', 'zapier:zap-7')"),
-        external_payload: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Arbitrary payload forwarded by the external system; stored on the execution"),
+        definition_id: sequenceDefinitionId,
+        context: externalSequenceContext.optional(),
       },
     },
     async ({ account_id, card_id, ...body }) =>
@@ -220,12 +223,16 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get sequence analytics dashboard",
       description:
-        "Aggregated metrics for sequence executions: completion rate, avg duration, drop-off per step, top-performing definitions.",
+        "Return daily started/completed/failed counts plus active count, completions today, average completion days and top definitions by starts.",
       inputSchema: {
         account_id: optionalAccountId,
-        sequence_definition_id: sequenceDefinitionId.optional(),
-        from: z.string().optional().describe("ISO8601 from"),
-        to: z.string().optional().describe("ISO8601 to"),
+        days_back: z
+          .number()
+          .int()
+          .min(1)
+          .max(90)
+          .optional()
+          .describe("Daily summary window (default 7, maximum 90)"),
       },
       annotations: { readOnlyHint: true },
     },

@@ -41,11 +41,48 @@ const cardId = z.number().int().positive().describe("Pipeline card ID");
 const stageId = z.string().min(1).describe('Pipeline stage ID (e.g. "3321_qualificado")');
 const pipelineIdInput = z.number().int().positive().describe("Pipeline ID");
 
-const dealQualification = z
-  .enum(["unqualified", "qualified", "qualified_meeting", "qualified_proposal", "negotiation"])
-  .describe("Deal qualification status");
+const cardPriority = z.enum(["none", "low", "medium", "high", "urgent"]).describe("Card priority");
 
-const cardPriority = z.enum(["low", "medium", "high", "urgent"]).describe("Card priority");
+const currencyCode = z
+  .string()
+  .regex(/^[A-Z]{3}$/, "Currency must be a three-letter uppercase code (for example, BRL)")
+  .describe("Three-letter uppercase currency code (for example, BRL, USD, or EUR)");
+
+const expectedRevenue = z
+  .number()
+  .min(0)
+  .max(9_999_999_999.99)
+  .describe("Expected revenue between 0 and 9,999,999,999.99");
+
+const qualificationCriterion = z
+  .object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    checked: z.boolean().optional(),
+    points: z.number().optional(),
+    required: z.boolean().optional(),
+    category: z.string().optional(),
+    checked_at: z.string().nullable().optional(),
+    checked_by: z.union([z.number().int().positive(), z.string()]).nullable().optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .strict();
+
+const qualificationChecklist = z
+  .record(z.string(), qualificationCriterion)
+  .describe("Qualification criteria keyed by criterion ID");
+
+const cardIndexPagination = {
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .describe("Items per page (default 50, max 500)"),
+  cursor: z.string().optional().describe("Opaque cursor returned in meta.next_cursor"),
+  offset: z.number().int().min(0).optional().describe("Pagination offset (default 0)"),
+};
 
 /**
  * Shared advanced filter fragments accepted by the cards index AND the CSV
@@ -53,14 +90,26 @@ const cardPriority = z.enum(["low", "medium", "high", "urgent"]).describe("Card 
  * optional; passed straight through as query params.
  */
 const cardFilters = {
+  search: z
+    .string()
+    .max(200)
+    .optional()
+    .describe("Search card, contact, owner, inbox, identifier, or stage text (max 200 characters)"),
   labels: z
     .array(z.string())
     .optional()
     .describe("Filter by conversation label titles (OR — matches any)"),
+  priority: z.array(cardPriority).min(1).optional().describe("Filter by one or more priorities"),
   value_min: z.number().optional().describe("Minimum expected_revenue/value"),
   value_max: z.number().optional().describe("Maximum expected_revenue/value"),
   agent_id: z
-    .union([z.number().int(), z.string()])
+    .union([
+      z
+        .number()
+        .int()
+        .refine((value) => value === -1 || value > 0, "Use a positive owner ID or -1"),
+      z.literal("unassigned"),
+    ])
     .optional()
     .describe("Owner agent ID. Use -1 or 'unassigned' for cards with no owner."),
   date_start: z.string().optional().describe("Created-at range start (YYYY-MM-DD)"),
@@ -70,6 +119,10 @@ const cardFilters = {
     .array(z.string())
     .optional()
     .describe('Filter by one or more stage IDs (e.g. ["3321_lead", "3321_qualificado"])'),
+  status: z
+    .enum(["open", "won", "lost", "closed"])
+    .optional()
+    .describe("Deal status; closed includes won and lost cards"),
 };
 
 export const register: RegisterFn = (server, client) => {
@@ -79,18 +132,16 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "List pipeline cards",
       description:
-        "List cards filtered by pipeline, stage, owner, qualification, status (open/won/lost). Use list_discarded_cards for soft-deleted ones.",
+        "List visible cards with the legacy cursor/offset contract. Filters match PipelineCardsController#index; use list_discarded_cards for soft-deleted cards.",
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineIdInput.optional(),
-        stage_id: stageId.optional(),
-        owner_id: agentUserId.optional(),
-        qualification: dealQualification.optional(),
-        status: z.enum(["open", "won", "lost"]).optional(),
-        contact_id: z.number().int().positive().optional(),
-        priority: cardPriority.optional(),
+        pipeline_stage: stageId.optional(),
+        conversation_display_id: conversationDisplayId.optional(),
+        contact_id: contactId.optional(),
+        exclude_id: cardId.optional(),
         ...cardFilters,
-        ...pagination,
+        ...cardIndexPagination,
       },
       annotations: { readOnlyHint: true },
     },
@@ -131,7 +182,11 @@ export const register: RegisterFn = (server, client) => {
       title: "List discarded (soft-deleted) cards",
       description:
         "List cards that were soft-deleted (LGPD/GDPR-compliant). Recoverable via restore_card.",
-      inputSchema: { account_id: optionalAccountId, ...pagination },
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineIdInput.optional(),
+        ...pagination,
+      },
       annotations: { readOnlyHint: true },
     },
     async ({ account_id, ...params }) =>
@@ -151,10 +206,10 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineIdInput.optional(),
-        stage_id: stageId.optional(),
-        contact_id: z.number().int().positive().optional(),
-        status: z.enum(["open", "won", "lost", "closed"]).optional(),
-        priority: cardPriority.optional(),
+        pipeline_stage: stageId.optional(),
+        conversation_display_id: conversationDisplayId.optional(),
+        contact_id: contactId.optional(),
+        exclude_id: cardId.optional(),
         ...cardFilters,
       },
       annotations: { readOnlyHint: true },
@@ -172,7 +227,7 @@ export const register: RegisterFn = (server, client) => {
       title: "Get pipeline card import CSV template",
       description:
         "Return the CSV template (text/csv, raw string) for bulk-importing cards. Columns: title (required), stage, description, expected_revenue, contact_identifier, contact_email, contact_phone. Fill it and upload via the dashboard import (MCP multipart upload is not yet supported).",
-      inputSchema: { account_id: accountId },
+      inputSchema: { account_id: optionalAccountId },
       annotations: { readOnlyHint: true },
     },
     async ({ account_id }) =>
@@ -188,39 +243,47 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create pipeline card",
       description:
-        "Create a new card on a stage. Either contact_id or contact_attributes is required.",
+        "Create a new card on a pipeline stage using the legacy pipeline_card wrapper. " +
+        "The stage must be a regular one: a card cannot be opened directly in a won/lost " +
+        "stage (422) — create it open, then close it with mark_card_won / mark_card_lost.",
       inputSchema: {
         account_id: optionalAccountId,
         pipeline_id: pipelineIdInput,
         // Backend column is `pipeline_stage` (string id like '3321_qualificado').
         // Was incorrectly named `pipeline_stage_id` here — backend silently
         // dropped it via strong_params and validation failed with 422.
+        //
+        // Since the 2026-08 audit a terminal (won/lost) stage is refused here with
+        // 422 `pipeline_stage: requires_deal_transition`: being born closed skipped
+        // the closing value and the opportunity ledger entry. update_card has no
+        // pipeline_stage at all, and move_card_to_stage goes through move_to_stage,
+        // which performs the closing itself — both are unaffected.
         pipeline_stage: stageId,
-        title: z.string().min(1).describe("Card title (e.g., the deal name)"),
-        contact_id: z.number().int().positive().optional(),
-        contact_attributes: z
-          .object({
-            name: z.string().optional(),
-            email: z.string().optional(),
-            phone_number: z.string().optional(),
-          })
-          .optional()
-          .describe("Inline contact creation (alternative to contact_id)"),
-        owner_id: agentUserId.optional().describe("Assign card to an agent"),
+        position: z.number().int().min(0).optional(),
+        conversation_display_id: conversationDisplayId.nullable().optional(),
+        contact_id: contactId.nullable().optional(),
+        owner_id: agentUserId.nullable().optional().describe("Assign card to an agent"),
+        timer_started_at: z.string().nullable().optional(),
+        timer_duration: z.number().int().min(0).optional(),
+        title: z.string().nullable().optional().describe("Card title (e.g., the deal name)"),
+        description: z.string().nullable().optional(),
         priority: cardPriority.optional(),
-        expected_revenue: z.number().optional(),
-        scheduled_at: z.string().optional().describe("ISO8601 datetime"),
-        deadline: z.string().optional().describe("ISO8601 datetime"),
+        expected_revenue: expectedRevenue.nullable().optional(),
+        currency: currencyCode.nullable().optional(),
+        scheduled_at: z.string().nullable().optional().describe("ISO8601 datetime"),
+        deadline: z.string().nullable().optional().describe("ISO8601 datetime"),
+        forecast_close_date: z.string().nullable().optional().describe("ISO8601 date"),
+        source: z.string().nullable().optional(),
         tags: z.array(z.string()).optional(),
-        qualification_status: dealQualification.optional(),
         custom_attributes: customAttributes,
         item_details: z.record(z.string(), z.unknown()).optional(),
+        qualification_checklist: qualificationChecklist.optional(),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/pipeline_cards`, body);
+        return client.post(`/api/v1/accounts/${acc}/pipeline_cards`, { pipeline_card: body });
       }),
   );
 
@@ -233,13 +296,16 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
-        title: z.string().optional(),
+        title: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
         priority: cardPriority.optional(),
-        expected_revenue: z.number().optional(),
-        scheduled_at: z.string().optional(),
-        deadline: z.string().optional(),
+        expected_revenue: expectedRevenue.nullable().optional(),
+        currency: currencyCode.nullable().optional(),
+        scheduled_at: z.string().nullable().optional(),
+        deadline: z.string().nullable().optional(),
+        forecast_close_date: z.string().nullable().optional(),
+        source: z.string().nullable().optional(),
         tags: z.array(z.string()).optional(),
-        qualification_status: dealQualification.optional(),
         custom_attributes: customAttributes,
         item_details: z.record(z.string(), z.unknown()).optional(),
       },
@@ -248,7 +314,9 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`, {
+          pipeline_card: body,
+        });
       }),
   );
 
@@ -274,12 +342,24 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Move card to stage",
       description:
-        "Move a card to a different stage. Records stage_history and may trigger automations.",
+        "Move a card to a different stage. Records stage_history and may trigger automations. " +
+        "Unlike create_card, this tool DOES accept a won/lost stage as the destination: it " +
+        "detects the stage type and performs the full closing itself (using lost_reason / " +
+        "won_value / won_note when given), so it is the one-call way to move a card and close " +
+        "the deal.",
+      // Cross-review: the 2026-08 audit closed the generic write path into a
+      // won/lost stage, and create_card now says so. Stated only there, an agent
+      // reading these descriptions concludes "no stage tool touches a terminal
+      // stage" and falls back to mark_card_won for a plain move — the opposite of
+      // the contract. The exemption belongs in the description, which is what the
+      // model actually reads at call time; the CHANGELOG is not in its context.
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
-        pipeline_stage_id: stageId,
-        position: z.number().int().optional().describe("Position within new stage (default: end)"),
+        pipeline_stage: stageId,
+        lost_reason: z.string().optional(),
+        won_value: expectedRevenue.nullable().optional(),
+        won_note: z.string().nullable().optional(),
       },
     },
     async ({ account_id, card_id, ...body }) =>
@@ -293,11 +373,22 @@ export const register: RegisterFn = (server, client) => {
     "reorder_cards",
     {
       title: "Reorder cards within a stage",
-      description: "Reorder cards by passing the target order of card IDs.",
+      description:
+        "Set card positions (and their existing stage) inside one pipeline. Each entry must include id, position and pipeline_stage.",
       inputSchema: {
         account_id: optionalAccountId,
-        pipeline_stage_id: stageId,
-        card_ids: z.array(z.number().int().positive()).describe("Cards in desired order"),
+        pipeline_id: pipelineIdInput,
+        positions: z
+          .array(
+            z
+              .object({
+                id: cardId,
+                position: z.number().int().min(0),
+                pipeline_stage: stageId,
+              })
+              .strict(),
+          )
+          .min(1),
       },
     },
     async ({ account_id, ...body }) =>
@@ -315,8 +406,9 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
-        won_value: z.number().optional(),
-        won_note: z.string().optional(),
+        won_value: expectedRevenue.nullable().optional(),
+        won_note: z.string().nullable().optional(),
+        winning_offer_index: z.number().int().min(0).optional(),
       },
     },
     async ({ account_id, card_id, ...body }) =>
@@ -338,7 +430,6 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         card_id: cardId,
         lost_reason: z.string().optional(),
-        lost_note: z.string().optional(),
       },
     },
     async ({ account_id, card_id, ...body }) =>
@@ -376,14 +467,13 @@ export const register: RegisterFn = (server, client) => {
         account_id: optionalAccountId,
         card_id: cardId,
         owner_id: agentUserId.nullable().describe("Pass null to unassign"),
+        notify: z.boolean().optional().describe("Notify the newly assigned owner"),
       },
     },
-    async ({ account_id, card_id, owner_id }) =>
+    async ({ account_id, card_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/assign`, {
-          owner_id,
-        });
+        return client.patch(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/assign`, body);
       }),
   );
 
@@ -487,20 +577,27 @@ export const register: RegisterFn = (server, client) => {
     "bulk_assign_cards",
     {
       title: "Bulk assign cards to an owner",
-      description: "Reassign multiple cards to a single agent in one call.",
+      description:
+        "Assign up to 200 cards directly, by round robin or by current workload. " +
+        "In direct mode owner_id is required: pass a user id to assign, or null to unassign. " +
+        "Omitting it is rejected with 422 — a missing key used to clear every owner in the batch.",
       inputSchema: {
         account_id: optionalAccountId,
-        card_ids: z.array(z.number().int().positive()).min(1),
-        owner_id: agentUserId.nullable(),
+        card_ids: z.array(z.number().int().positive()).min(1).max(200),
+        owner_id: agentUserId
+          .nullable()
+          .optional()
+          .describe("Required in direct mode (no distribution). Pass null to unassign."),
+        distribution: z.enum(["round_robin", "workload_balanced"]).optional(),
       },
     },
-    async ({ account_id, card_ids, owner_id }) =>
+    async ({ account_id, card_ids, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
         // owners#bulk_assign reads `item_ids` (not `card_ids`).
         return client.post(`/api/v1/accounts/${acc}/pipeline/cards/bulk_assign`, {
           item_ids: card_ids,
-          owner_id,
+          ...body,
         });
       }),
   );
@@ -512,8 +609,9 @@ export const register: RegisterFn = (server, client) => {
       description: "Set priority for multiple cards in one call.",
       inputSchema: {
         account_id: optionalAccountId,
-        card_ids: z.array(z.number().int().positive()).min(1),
+        card_ids: z.array(z.number().int().positive()).min(1).max(500),
         priority: cardPriority,
+        pipeline_stage: stageId.optional(),
       },
     },
     async ({ account_id, ...body }) =>
@@ -531,7 +629,9 @@ export const register: RegisterFn = (server, client) => {
         "Soft-delete multiple cards. Recoverable via restore_card within retention window.",
       inputSchema: {
         account_id: accountId,
-        card_ids: z.array(z.number().int().positive()).min(1),
+        card_ids: z.array(z.number().int().positive()).min(1).max(500),
+        pipeline_stage: stageId.optional(),
+        reason: z.string().optional(),
       },
       annotations: { destructiveHint: true },
     },
@@ -551,16 +651,15 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
-        checklist: z.record(z.string(), z.boolean()).describe("Checklist items keyed by name"),
+        qualification_checklist: qualificationChecklist,
       },
-      annotations: { idempotentHint: true },
     },
-    async ({ account_id, card_id, checklist }) =>
+    async ({ account_id, card_id, qualification_checklist }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.patch(
           `/api/v1/accounts/${acc}/pipeline_cards/${card_id}/update_qualification_checklist`,
-          { qualification_checklist: checklist },
+          { qualification_checklist },
         );
       }),
   );
@@ -586,7 +685,21 @@ export const register: RegisterFn = (server, client) => {
     "recalculate_card_lead_score",
     {
       title: "Recalculate card lead score",
-      description: "Recompute the lead score for a card by re-running all enabled rules.",
+      description:
+        "Recompute the lead score for a card by re-running all enabled rules. Returns " +
+        "lead_score, lead_score_factors, lead_score_category and three timestamps: " +
+        "`lead_score_updated_at` (when the score was computed), `card_updated_at` (when the " +
+        "CARD was last updated) and the legacy `updated_at`. On THIS route `updated_at` " +
+        "carries the score timestamp, not the card's — read `card_updated_at` when you mean " +
+        "the card. Recalculating writes the score columns directly and does NOT bump the " +
+        "card's timestamp, so `card_updated_at` normally comes back OLDER than " +
+        "`lead_score_updated_at`; that is expected, not a stale read.",
+      // R6 (audit 2026-08): this route's `updated_at` always carried
+      // lead_score_updated_at, while the legacy /pipeline_cards/:id/recalculate_score
+      // route returns the card's. The published meaning was kept so external
+      // consumers do not break, and both routes gained the two explicit names.
+      // Without this note an agent reads `updated_at` here as the card timestamp —
+      // exactly the confusion the backend change set out to end.
       inputSchema: { account_id: optionalAccountId, card_id: cardId },
     },
     async ({ account_id, card_id }) =>
@@ -606,8 +719,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         card_id: cardId,
-        score: z.number().int().min(0).describe("Override score value"),
-        reason: z.string().optional().describe("Justification for the override"),
+        score: z.number().int().min(0).max(100).describe("Override score value"),
       },
     },
     async ({ account_id, card_id, ...body }) =>
@@ -660,12 +772,14 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get pipeline analytics dashboard",
       description:
-        "Return the consolidated pipeline analytics dashboard (win rate, conversion, sales velocity, forecast).",
+        "Return the global visible-pipeline dashboard: win rate, sales velocity, lead distribution, pipeline summary and the applied period.",
       inputSchema: {
         account_id: optionalAccountId,
-        pipeline_id: pipelineIdInput.optional(),
-        from: z.string().optional().describe("ISO8601 date"),
-        to: z.string().optional().describe("ISO8601 date"),
+        start_date: z
+          .string()
+          .optional()
+          .describe("Period start in the account reporting timezone"),
+        end_date: z.string().optional().describe("Period end in the account reporting timezone"),
       },
       annotations: { readOnlyHint: true },
     },

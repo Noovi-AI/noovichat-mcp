@@ -35,11 +35,11 @@ account_id: accountId,           // required (z.number().int().positive())
 account_id: optionalAccountId,   // optional with env fallback
 
 // Enums (closed sets)
-priority: z.enum(["low", "medium", "high", "urgent"]),
+priority: z.enum(["none", "low", "medium", "high", "urgent"]),
 status: z.enum(["open", "won", "lost"]),
 
-// Pagination (use the spread helper)
-{ ...pagination }                // adds page + per_page
+// Page pagination (only on routes that implement page/per_page)
+{ ...pagination }                // adds page + per_page; do not use on cursor routes
 
 // Free-form metadata
 custom_attributes: z.record(z.string(), z.unknown()).optional(),
@@ -71,10 +71,10 @@ For query params, pass an object — the client handles encoding:
 
 ```typescript
 client.get(`/api/v1/accounts/${acc}/pipeline_cards`, {
-  page: 1,
-  per_page: 50,
+  limit: 50,
+  cursor: "opaque-cursor-from-meta",
   status: "open",
-  tag_ids: [1, 2, 3],          // becomes ?tag_ids[]=1&tag_ids[]=2&tag_ids[]=3
+  priority: ["high", "urgent"], // becomes ?priority[]=high&priority[]=urgent
 });
 ```
 
@@ -85,11 +85,13 @@ client adds `Content-Type: application/json` and serializes.
 
 ```typescript
 client.post(`/api/v1/accounts/${acc}/pipeline_cards`, {
-  pipeline_id,
-  pipeline_stage_id,
-  title,
-  contact_id,
-  // ... other fields
+  pipeline_card: {
+    pipeline_id,
+    pipeline_stage,
+    title,
+    contact_id,
+    // ... other permitted fields
+  },
 });
 ```
 
@@ -99,9 +101,16 @@ Use object spread to forward validated input minus consumed fields:
 async ({ account_id, card_id, ...body }) =>
   safeHandler(() => {
     const acc = resolveAccountId(account_id);
-    return client.patch(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`, body);
+    return client.patch(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`, {
+      pipeline_card: body,
+    });
   }),
 ```
+
+Request wrappers are route-specific strong-parameter contracts. Verify the
+matching Rails controller before forwarding a body; the legacy card CRUD
+requires `pipeline_card`, while card actions such as `move_to_stage` accept
+their fields at the JSON root.
 
 ## 5. Annotations
 

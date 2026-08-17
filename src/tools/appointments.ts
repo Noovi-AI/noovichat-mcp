@@ -172,7 +172,15 @@ const serviceIds = z
   .optional()
   .describe("Replacement list of account service IDs offered by the professional");
 
-const partnerKind = z.enum(["convenio", "seguro", "plano", "outros"]);
+// Não é conjunto fechado: a conta nomeia os próprios tipos. Como enum, o zod
+// recusaria um tipo criado pela conta antes mesmo de a requisição sair.
+const partnerKind = z
+  .string()
+  .min(1)
+  .max(40)
+  .describe(
+    "Partner type, up to 40 characters. convenio, seguro, plano and outros are the canonical values the NooviChat dashboard translates; any other value is stored and displayed as written.",
+  );
 
 const bulkAppointmentIds = z
   .array(appointmentId)
@@ -209,6 +217,38 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.get(`/api/v1/accounts/${acc}/appointments`, params);
+      }),
+  );
+
+  server.registerTool(
+    "list_appointment_clients",
+    {
+      title: "List clients with appointments",
+      description:
+        "Return {data, meta} with the directory of contacts that have at least one appointment, aggregated over the ENTIRE history — no date window. Each row carries appointments_count plus last_appointment_at and next_appointment_at. Cancellations and no-shows count toward the total but never feed those two dates.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        q: z
+          .string()
+          .max(120)
+          .optional()
+          .describe(
+            "Case-insensitive search over the contact name, email and phone. % and _ match literally.",
+          ),
+        sort: z
+          .enum(["recent", "upcoming", "frequency", "name"])
+          .optional()
+          .describe(
+            "recent (default): most recent visit first. upcoming: soonest next visit. frequency: most appointments. name: alphabetical. Clients missing the relevant date sort last.",
+          ),
+        page: z.number().int().min(1).optional().describe("Page number, 30 per page"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/appointments/clients`, params);
       }),
   );
 
@@ -447,6 +487,39 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.get(`/api/v1/accounts/${acc}/appointments/availability`, params);
+      }),
+  );
+
+  server.registerTool(
+    "get_appointment_availability_range",
+    {
+      title: "Get appointment availability slots over a range of days",
+      description:
+        "Same rules as get_appointment_availability, answered for every day from `from` to `to` inclusive in one call. " +
+        "Returns {data:{professional_id,duration_minutes,days:[{date,slots}]}}. Every day in the range is present, " +
+        "including days the professional does not work, which come back with an empty slots array — an absent day " +
+        "could not be told apart from a day with nothing free. The range must span at most 42 days.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        professional_id: professionalId,
+        from: calendarDate.describe("First day of the range (YYYY-MM-DD), inclusive"),
+        to: calendarDate.describe(
+          "Last day of the range (YYYY-MM-DD), inclusive; must not precede `from` and the range must be at most 42 days",
+        ),
+        service_id: serviceId.optional(),
+        duration_minutes: durationMinutes
+          .optional()
+          .describe("Used when service_id is omitted; defaults to 60"),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/appointments/availability_range`,
+          params,
+        );
       }),
   );
 
@@ -712,14 +785,22 @@ export const register: RegisterFn = (server, client) => {
     "list_partners",
     {
       title: "List partners",
-      description: "Return {data} with all active, non-archived appointment partners.",
-      inputSchema: { account_id: optionalAccountId },
+      description:
+        "Return {data} with the account's non-archived appointment partners, ordered by name. Active ones only unless include_inactive is set — a deactivated partner is otherwise unreachable, including to reactivate it.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        include_inactive: z
+          .boolean()
+          .optional()
+          .describe("Include partners whose active flag is false"),
+      },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id }) =>
+    async ({ account_id, include_inactive }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/partners`);
+        const query = include_inactive ? "?include_inactive=true" : "";
+        return client.get(`/api/v1/accounts/${acc}/partners${query}`);
       }),
   );
 

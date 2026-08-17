@@ -5,6 +5,68 @@ All notable changes to `@nooviai/noovichat-mcp` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`get_appointment_availability_range`** answers availability for a range of
+  days in one call, returning
+  `{data:{professional_id,duration_minutes,days:[{date,slots}]}}` from
+  `GET /appointments/availability_range`. The rules are identical to
+  `get_appointment_availability` because it is the same server-side service
+  applied day by day — working hours, buffer, service duration, existing
+  appointments (cancelled and no-show do not occupy) and start times already in
+  the past. It exists so that covering a week or a month is one request instead
+  of seven or forty-two. Every day in the range comes back, including days the
+  professional does not work, with an empty `slots` array: an omitted day would
+  be indistinguishable from a day with nothing free. `from` and `to` are both
+  required, `to` must not precede `from`, and the range must span at most 42
+  days.
+
+### Fixed
+
+- **Pipeline cards** now use the exact Rails filter and mutation contracts:
+  `pipeline_stage`/`agent_id`, cursor pagination, `pipeline_card` request
+  wrappers, structured reorder positions and qualification criteria, the
+  `none` priority, bounded bulk operations, and `start_date`/`end_date` for the
+  global analytics dashboard.
+- **Pipeline sequences** now send `definition_id`, restrict `external_start`
+  context to the backend allowlist, omit unsupported pagination/outcome data,
+  and expose only the implemented `days_back` analytics filter.
+- **Pipeline webhooks** now distinguish managed outbound deliveries from the
+  separate public automation trigger. Managed create requires an HTTP(S) URL,
+  test uses the server-generated sample, secret rotation is explicitly
+  destructive, verify documents its 204/404 no-body contract, and public
+  payload variables use `webhook_payload`/`payload`.
+
+### Changed
+
+- **`create_card`** documents that a won/lost stage is refused with 422. The
+  backend audit of 2026-08 closed the generic write path into and out of a
+  terminal stage, because it left a deal closed without its closing value or
+  its opportunity ledger entry. `update_card` never accepted `pipeline_stage`
+  and `move_card_to_stage` posts to `move_to_stage` (which performs the
+  closing itself), so both are unaffected; `mark_card_won`, `mark_card_lost`
+  and `reopen_card` remain the way to change a deal's outcome.
+  `move_card_to_stage` now says so in its own description, so an agent does not
+  read the `create_card` restriction as a ban on moving cards into a won/lost
+  stage.
+- **`recalculate_card_lead_score`** documents the response contract. The route
+  it calls (`POST /pipeline/cards/:id/lead_scores/recalculate`) gained
+  `lead_score_updated_at` (when the score was computed) and `card_updated_at`
+  (when the card was last updated). Its `updated_at` was left untouched to
+  avoid breaking existing consumers, and on this route that legacy field
+  carries the score timestamp — not the card's. Read `card_updated_at` when you
+  mean the card; it is the one field with the same meaning on both
+  recalculation routes. Recalculating writes the score columns directly and
+  leaves the card's own timestamp alone, so `card_updated_at` normally comes
+  back older than `lead_score_updated_at`.
+- **`create_pipeline_automation` / `update_pipeline_automation`** document the
+  flow requirement: an automation the engine cannot execute is refused with
+  422 rather than saved as a rule that shows up active and never runs. That
+  covers creating one without flow nodes, emptying an existing flow, and
+  activating a legacy flowless automation. Deactivating one is still allowed.
+
 ## [0.13.0] - 2026-07-02
 
 ### Added

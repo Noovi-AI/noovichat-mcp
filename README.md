@@ -30,10 +30,10 @@ for them to work end-to-end.
 | **Pipeline Pro — core** | 32 | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore, additional (non-primary) contacts/conversations |
 | **Pipeline automations** | 24 | CRUD, execute, dry-run, validate, audit logs, executions, templates |
 | **Pipeline activities** | 27 | Activities CRUD, sequences, templates, status transitions |
-| **Pipeline sequences** | 8 | Card-attached cadences, external trigger, analytics |
-| **Pipeline webhooks** | 9 | Managed CRUD + public token-only trigger endpoint |
+| **Pipeline sequences** | 8 | Card-attached cadences, account-scoped external start, 1–90 day analytics summary |
+| **Pipeline webhooks** | 9 | Outbound delivery CRUD/test/secret rotation + separate public automation trigger/verify |
 | **Follow-Ups** | 24 | Schedule, cancel, templates, items, variables, automations, reports |
-| **Atendimentos** | 29 | Appointments, services, professionals, partners, availability, Google Calendar sync |
+| **Atendimentos** | 31 | Appointments, services, professionals, partners, availability (single day and range), Google Calendar sync |
 | **Broadcasts** | 14 | Mass-send WhatsApp campaigns (CSV/tags/kanban/whatsapp_group), blacklist, pause/resume, duplicate |
 | **WhatsApp Hub (NooviConnect)** | 28 | Sessions, groups & channels, hub report, create/leave group, participants (add/remove/promote/demote), group settings (name/topic/photo/locked/announce), invite link, join/preview group by link, group picture, unfollow channel, send poll/location, profile (read/status), check number, WhatsApp Business labels |
 | **WhatsApp Templates** | 6 | Custom CRUD over Meta Cloud + sync from Meta |
@@ -104,8 +104,8 @@ host's MCP documentation for the exact format.
 
 Ask Claude things like:
 
-> "List my open pipeline cards in the **B2B Outbound** funnel that are
-> assigned to me and have lead_score above 60."
+> "List my urgent open pipeline cards in the **B2B Outbound** funnel that are
+> assigned to me."
 
 > "Schedule a WhatsApp follow-up to contact #1234 saying 'Hi {{name}}, did
 > you receive our proposal?' for 9am tomorrow."

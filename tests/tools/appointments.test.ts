@@ -73,11 +73,13 @@ describe("appointments tools — registration and account scope", () => {
         "export_appointments_csv",
         "get_appointment",
         "get_appointment_availability",
+        "get_appointment_availability_range",
         "get_appointments_metrics",
         "get_partner",
         "get_professional",
         "get_professional_availability",
         "get_service",
+        "list_appointment_clients",
         "list_appointments",
         "list_available_professionals",
         "list_partners",
@@ -409,6 +411,25 @@ describe("appointments tools — exact appointment contract", () => {
       service_id: 3,
     });
 
+    const range = tools.get("get_appointment_availability_range");
+    // O intervalo pede os dois extremos: sem `to`, a chamada cairia no
+    // endpoint com um range aberto em vez de ser recusada aqui.
+    expect(
+      parseInput(range, { account_id: 7, professional_id: 2, from: "2026-08-12" }).success,
+    ).toBe(false);
+    expect(range?.config.inputSchema?.to.safeParse("2026-02-29").success).toBe(false);
+    await range?.handler({
+      account_id: 7,
+      professional_id: 2,
+      from: "2026-08-10",
+      to: "2026-08-16",
+      service_id: 3,
+    });
+    expect(client.get).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/appointments/availability_range",
+      { professional_id: 2, from: "2026-08-10", to: "2026-08-16", service_id: 3 },
+    );
+
     await tools.get("list_available_professionals")?.handler({
       account_id: 7,
       scheduled_at: "2026-08-12T10:00:00-03:00",
@@ -425,12 +446,64 @@ describe("appointments tools — exact catalog contracts", () => {
   it.each([
     ["list_services", "/api/v1/accounts/7/services"],
     ["list_professionals", "/api/v1/accounts/7/professionals"],
-    ["list_partners", "/api/v1/accounts/7/partners"],
   ])("calls non-paginated %s without fake query params", async (name, path) => {
     const { tools, client } = setup();
     expect(inputKeys(tools.get(name))).toEqual(["account_id"]);
     await tools.get(name)?.handler({ account_id: 7 });
     expect(client.get).toHaveBeenCalledWith(path);
+  });
+
+  it("lists only active partners unless asked otherwise", async () => {
+    const { tools, client } = setup();
+    expect(inputKeys(tools.get("list_partners"))).toEqual([
+      "account_id",
+      "include_inactive",
+    ]);
+
+    await tools.get("list_partners")?.handler({ account_id: 7 });
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/partners");
+  });
+
+  it("asks for the deactivated partners when told to", async () => {
+    const { tools, client } = setup();
+
+    // Sem este filtro um parceiro desativado fica inalcancavel, inclusive
+    // para reativa-lo.
+    await tools
+      .get("list_partners")
+      ?.handler({ account_id: 7, include_inactive: true });
+
+    expect(client.get).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/partners?include_inactive=true",
+    );
+  });
+
+  it("accepts a partner type the account invented", () => {
+    const { tools } = setup();
+
+    // Como enum, o zod recusaria o tipo criado pela conta antes da requisicao.
+    const schema = tools.get("create_partner")?.config?.inputSchema?.kind;
+    expect(schema?.safeParse("Particular Premium").success).toBe(true);
+    expect(schema?.safeParse("x".repeat(41)).success).toBe(false);
+  });
+
+  it("aggregates the client directory over the whole history", async () => {
+    const { tools, client } = setup();
+    expect(inputKeys(tools.get("list_appointment_clients"))).toEqual([
+      "account_id",
+      "page",
+      "q",
+      "sort",
+    ]);
+
+    await tools
+      .get("list_appointment_clients")
+      ?.handler({ account_id: 7, q: "maria", sort: "frequency" });
+
+    expect(client.get).toHaveBeenCalledWith(
+      "/api/v1/accounts/7/appointments/clients",
+      { q: "maria", sort: "frequency" },
+    );
   });
 
   it("uses the real service fields and forwards reminder templates", async () => {
