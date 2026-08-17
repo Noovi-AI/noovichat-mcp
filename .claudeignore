@@ -1,8 +1,0 @@
-# NooviChat-MCP (TypeScript + tsup) — diretórios ruidosos
-node_modules/
-dist/
-*.log
-*.lock
-*.tsbuildinfo
-*.map
-coverage/
