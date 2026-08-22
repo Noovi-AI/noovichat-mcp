@@ -42,6 +42,7 @@ import { register as registerAtendimentoExt } from "./atendimento-extensions.js"
 import { register as registerGoogleCalendar } from "./google-calendar.js";
 
 import { register as registerAudio } from "./audio.js";
+import { register as registerCaptainAi } from "./captain-ai.js";
 import { register as registerCaptainHook } from "./captain-hook.js";
 import { register as registerConversationSummary } from "./conversation-summary.js";
 import { register as registerFlowBuilder } from "./flow-builder.js";
@@ -74,6 +75,7 @@ const registrations = [
   registerFlowBuilder,
   registerWhitelabel,
   registerCaptainHook,
+  registerCaptainAi,
   registerConversationSummary,
   registerAudio,
 ];
