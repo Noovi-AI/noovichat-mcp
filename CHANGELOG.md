@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`move_card_to_stage` reads the card before moving it.** Since NooviChat
+  v4.17.0.6 the server compares an `expected_version` inside the same
+  transaction and answers HTTP 409 (`stage_version_conflict`) instead of
+  silently overwriting a move somebody else made in between. When the configured
+  token authenticates as an **agent bot** the field is mandatory: without it the
+  server answers HTTP 422 (`expected_version_required`), so every bot-driven
+  move was already failing against that server.
+
+  The tool cannot know upfront which contract applies — `api_access_token`
+  resolves to a User or to an AgentBot depending on the token that was
+  configured, and the configuration asks for a token, not for its kind. So it
+  always issues `GET /pipeline_cards/:id` first and sends the version it read.
+  That is one extra request per move; in exchange a human's move stops being
+  silently overwritten as well.
+
+  A 409 is surfaced as-is rather than retried with a freshly read version:
+  retrying would reproduce exactly the overwrite the server is refusing, and
+  only the caller knows whether the move still makes sense after someone else's.
+  A server older than v4.17.0.6 does not return `stage_version`, and the field is
+  then omitted rather than sent as `null`.
+
 ### Added
 
 - **`get_appointment_availability_range`** answers availability for a range of

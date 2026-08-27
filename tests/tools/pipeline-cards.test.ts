@@ -22,7 +22,9 @@ function makeStubServer() {
 
 function makeMockClient() {
   return {
-    get: vi.fn(async () => ({ ok: true })),
+    // O cliente real devolve JSON de forma arbitraria; fixar {ok:true} impedia
+    // um exemplo de devolver o card que o move_to_stage precisa ler antes.
+    get: vi.fn(async (): Promise<unknown> => ({ ok: true })),
     post: vi.fn(async () => ({ ok: true })),
     patch: vi.fn(async () => ({ ok: true })),
     put: vi.fn(async () => ({ ok: true })),
@@ -226,6 +228,63 @@ describe("pipeline-cards tools — mutation payload contracts", () => {
       pipeline_stage: "9_won",
       won_value: 1200,
       won_note: "Signed",
+    });
+  });
+
+  // Compare-and-swap: desde a v4.17.0.6 o servidor EXIGE `expected_version` de
+  // quem autentica como agent bot (422 `expected_version_required` sem ele) e
+  // devolve 409 se alguém moveu o card entre a leitura e a escrita. O cabeçalho
+  // `api_access_token` resolve para User ou AgentBot conforme o token, então o
+  // MCP não sabe qual contrato vale e lê o card sempre.
+  it("reads the card and sends the version it read as expected_version", async () => {
+    const { tools, client } = setupTools();
+    client.get = vi.fn(async () => ({ id: 42, stage_version: 7 }));
+
+    await tools.get("move_card_to_stage")?.handler({
+      account_id: 7,
+      card_id: 42,
+      pipeline_stage: "9_contacted",
+    });
+
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/pipeline_cards/42");
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/pipeline_cards/42/move_to_stage", {
+      pipeline_stage: "9_contacted",
+      expected_version: 7,
+    });
+  });
+
+  it("sends expected_version 0 for a card created and never moved", async () => {
+    // Regressão: um `if (card.stage_version)` trataria 0 como ausente, e o bot
+    // levaria 422 justamente no PRIMEIRO movimento do card — o mais provável.
+    const { tools, client } = setupTools();
+    client.get = vi.fn(async () => ({ id: 43, stage_version: 0 }));
+
+    await tools.get("move_card_to_stage")?.handler({
+      account_id: 7,
+      card_id: 43,
+      pipeline_stage: "9_contacted",
+    });
+
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/pipeline_cards/43/move_to_stage", {
+      pipeline_stage: "9_contacted",
+      expected_version: 0,
+    });
+  });
+
+  it("omits expected_version when the server does not return stage_version", async () => {
+    // Instalação anterior à v4.17.0.6: mandar o campo faria o servidor recusar
+    // um parâmetro que ele não conhece.
+    const { tools, client } = setupTools();
+    client.get = vi.fn(async () => ({ id: 44 }));
+
+    await tools.get("move_card_to_stage")?.handler({
+      account_id: 7,
+      card_id: 44,
+      pipeline_stage: "9_contacted",
+    });
+
+    expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/pipeline_cards/44/move_to_stage", {
+      pipeline_stage: "9_contacted",
     });
   });
 

@@ -362,10 +362,35 @@ export const register: RegisterFn = (server, client) => {
         won_note: z.string().nullable().optional(),
       },
     },
+    // Compare-and-swap: desde a v4.17.0.6 o servidor EXIGE `expected_version` de
+    // quem autentica como agent bot, e devolve 409 se alguém moveu o card entre a
+    // leitura e a escrita, em vez de sobrescrever calado. Sem o parâmetro, um bot
+    // recebe 422 `expected_version_required`.
+    //
+    // O cabeçalho `api_access_token` resolve para User ou AgentBot conforme o
+    // token configurado, então o MCP não sabe de antemão qual contrato vale. Lê o
+    // card e manda a versão sempre: para bot é obrigatório, para humano converte
+    // "última escrita vence" em conflito detectado. Um GET a mais por movimento é
+    // o preço de não sobrescrever o trabalho de uma pessoa.
+    //
+    // O 409 sobe como veio: repetir com versão nova reproduziria exatamente a
+    // sobrescrita que o servidor está recusando.
     async ({ account_id, card_id, ...body }) =>
-      safeHandler(() => {
+      safeHandler(async () => {
         const acc = resolveAccountId(account_id);
-        return client.post(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}/move_to_stage`, body);
+        const card = (await client.get(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`)) as {
+          stage_version?: number;
+        } | null;
+
+        const payload: Record<string, unknown> = { ...body };
+        if (card?.stage_version !== undefined && card?.stage_version !== null) {
+          payload.expected_version = card.stage_version;
+        }
+
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline_cards/${card_id}/move_to_stage`,
+          payload,
+        );
       }),
   );
 
