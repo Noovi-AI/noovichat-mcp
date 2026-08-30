@@ -516,10 +516,7 @@ export const register: RegisterFn = (server, client) => {
     async ({ account_id, ...params }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(
-          `/api/v1/accounts/${acc}/appointments/availability_range`,
-          params,
-        );
+        return client.get(`/api/v1/accounts/${acc}/appointments/availability_range`, params);
       }),
   );
 

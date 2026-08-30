@@ -425,10 +425,12 @@ describe("appointments tools — exact appointment contract", () => {
       to: "2026-08-16",
       service_id: 3,
     });
-    expect(client.get).toHaveBeenCalledWith(
-      "/api/v1/accounts/7/appointments/availability_range",
-      { professional_id: 2, from: "2026-08-10", to: "2026-08-16", service_id: 3 },
-    );
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/appointments/availability_range", {
+      professional_id: 2,
+      from: "2026-08-10",
+      to: "2026-08-16",
+      service_id: 3,
+    });
 
     await tools.get("list_available_professionals")?.handler({
       account_id: 7,
@@ -455,10 +457,7 @@ describe("appointments tools — exact catalog contracts", () => {
 
   it("lists only active partners unless asked otherwise", async () => {
     const { tools, client } = setup();
-    expect(inputKeys(tools.get("list_partners"))).toEqual([
-      "account_id",
-      "include_inactive",
-    ]);
+    expect(inputKeys(tools.get("list_partners"))).toEqual(["account_id", "include_inactive"]);
 
     await tools.get("list_partners")?.handler({ account_id: 7 });
     expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/partners");
@@ -469,13 +468,9 @@ describe("appointments tools — exact catalog contracts", () => {
 
     // Sem este filtro um parceiro desativado fica inalcancavel, inclusive
     // para reativa-lo.
-    await tools
-      .get("list_partners")
-      ?.handler({ account_id: 7, include_inactive: true });
+    await tools.get("list_partners")?.handler({ account_id: 7, include_inactive: true });
 
-    expect(client.get).toHaveBeenCalledWith(
-      "/api/v1/accounts/7/partners?include_inactive=true",
-    );
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/partners?include_inactive=true");
   });
 
   it("accepts a partner type the account invented", () => {
@@ -500,10 +495,10 @@ describe("appointments tools — exact catalog contracts", () => {
       .get("list_appointment_clients")
       ?.handler({ account_id: 7, q: "maria", sort: "frequency" });
 
-    expect(client.get).toHaveBeenCalledWith(
-      "/api/v1/accounts/7/appointments/clients",
-      { q: "maria", sort: "frequency" },
-    );
+    expect(client.get).toHaveBeenCalledWith("/api/v1/accounts/7/appointments/clients", {
+      q: "maria",
+      sort: "frequency",
+    });
   });
 
   it("uses the real service fields and forwards reminder templates", async () => {

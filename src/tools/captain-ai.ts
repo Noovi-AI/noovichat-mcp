@@ -94,7 +94,12 @@ export const register: RegisterFn = (server, client) => {
         "Lists FAQ suggestions the Captain assistant derived from account conversations, for triage. A non-administrator only sees suggestions backed by conversations they can already read — filtered server-side.",
       inputSchema: {
         account_id: optionalAccountId,
-        assistant_id: z.number().int().positive().optional().describe("Filter by Captain assistant"),
+        assistant_id: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Filter by Captain assistant"),
         status: z.enum(["open", "approved", "dismissed"]).optional(),
         search: z.string().optional().describe("Case-insensitive match against question or answer"),
         page: z.number().int().positive().optional().describe("Default 1"),
