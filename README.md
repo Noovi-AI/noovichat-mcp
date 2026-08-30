@@ -202,8 +202,9 @@ This package follows [semver](https://semver.org/):
 - **Major** (x.0.0): breaking changes to existing tool signatures
 
 Releases respect the NooviChat monorepo
-[release-cadence rule](../docs/rules/release-cadence.md): batched, never
-during business hours BR (Mon-Fri 08-19h BRT).
+[release-cadence rule](../docs/rules/release-cadence.md): batched, versioned
+opt-in. Clean tree and HEAD-pushed (G1/G2) are mandatory; the Chatwoot
+business-hours window (G3) does **not** apply to this package.
 
 ## License
 
