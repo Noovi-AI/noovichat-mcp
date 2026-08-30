@@ -13,10 +13,18 @@ TOKEN="${NODE_AUTH_TOKEN:-${NPM_TOKEN:-}}"
 AUTO_BUMP="${AUTO_BUMP:-0}"
 
 if [ -z "$TOKEN" ]; then
-  echo "ERRO: NODE_AUTH_TOKEN/NPM_TOKEN ausente — configure o secret npm no GitHub." >&2
-  exit 1
+  if [ -z "${GITHUB_ACTIONS:-}" ]; then
+    echo "ERRO: NODE_AUTH_TOKEN/NPM_TOKEN ausente." >&2
+    exit 1
+  fi
+  echo "sem NPM_TOKEN — tentando Trusted Publisher (OIDC)"
+  unset NODE_AUTH_TOKEN NPM_TOKEN
+  if [ -n "${NPM_CONFIG_USERCONFIG:-}" ] && [ -f "${NPM_CONFIG_USERCONFIG}" ]; then
+    sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG" || true
+  fi
+else
+  export NODE_AUTH_TOKEN="$TOKEN"
 fi
-export NODE_AUTH_TOKEN="$TOKEN"
 
 npm_ver() { npm view "$PKG" version 2>/dev/null || true; }
 
@@ -81,7 +89,8 @@ case "$cmp" in
 esac
 
 echo "publishing $PKG@$GIT_VER"
-pnpm publish --access public --no-git-checks
+# npm CLI (not pnpm) owns OIDC trusted publishing.
+npm publish --access public
 
 if command -v gh >/dev/null 2>&1; then
   gh release view "v${GIT_VER}" >/dev/null 2>&1 || \

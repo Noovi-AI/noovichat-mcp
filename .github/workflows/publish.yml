@@ -2,6 +2,8 @@ name: Publish to npm
 
 # Publishes when git version is newer than npm. Tag push still works.
 # Docs-only commits on main no-op. Contract change without bump: AUTO_BUMP patch.
+# Auth: org/repo secret NPM_TOKEN, or npm Trusted Publisher for this
+# workflow filename (publish.yml) on @nooviai/noovichat-mcp.
 on:
   push:
     branches: [main]
@@ -30,9 +32,10 @@ jobs:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org/
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm build
