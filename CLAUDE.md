@@ -21,7 +21,9 @@ app**. This package only translates between MCP tool calls and REST calls.
 
 `recon → implement → review → tool↔route parity → real-behavior test → contract sync → commit → close-the-cycle docs → repeat` until nothing left to apply/adjust/polish. Single-shot answers to implementation requests are a bug.
 
-**⚙️ Autonomy contract — this loop runs end-to-end WITHOUT a human in the loop.** Every step, **including the atomic commit (step 7) and the internal-docs close (step 8)**, is the agent's to perform autonomously — never pause to ask "can I commit?". The **ONLY** hard block is **production release**: `pnpm version <patch|minor|major>` + `pnpm publish --access public` (and the `git push --follow-tags` that carries the tag). Publishing is a **versioned opt-in**: once on npm a version cannot be removed, so a broken publish breaks every MCP host (Claude Desktop/Code/Cursor) on next session. Those release actions always need explicit human approval + the 5 golden rules + `/pre-publish-audit`. Everything up to and including committing to `main` is autonomous. If a gate fails, fix it and re-loop — never hand a half-done cycle back.
+**⚙️ Autonomy contract — this loop runs end-to-end WITHOUT a human in the loop.** Every step, **including the atomic commit (step 7) and the internal-docs close (step 8)**, is the agent's to perform autonomously — never pause to ask "can I commit?". The **ONLY** hard block is **local `pnpm publish` from a dirty tree**. Routine
+fan-out: bump `package.json` in the same commit, push `main`, and
+`.github/workflows/publish.yml` publishes if the version is unpublished.
 
 **⚡ Fast path (trivial change — skip the heavy gates).** A change is *trivial* only when it is **≤2 files AND touches none of**: a tool's name/zod schema/route, a destructive annotation, `_helpers.ts`/`client.ts`, account-scoping (`accountId`/`resolveAccountId`), or the `src/tools/index.ts` registry. Examples: a tool description/JDoc fix, a comment, a `biome.json`/config tweak, a one-line bugfix with an obvious cause. Trivial changes go straight to **review (`pnpm check`) → commit**; steps 4–6 (parity, real-behavior test, contract sync) and step 8 (docs) are N/A by definition — say so in one line and move on. **Anything else** (3+ steps, or *any* tool/schema/route/destructive/account-scoping touch even in a single file) runs the full loop. When unsure, run the full loop.
 
@@ -30,11 +32,13 @@ app**. This package only translates between MCP tool calls and REST calls.
 3. **⛔ Review (fail-closed gate)** before commit: `pnpm check` = `pnpm typecheck` (`tsc --noEmit`) + `pnpm lint` (`biome check src tests`) + `pnpm test` (`vitest run`), **0 errors**. New/changed tool, route, or schema → a vitest is **mandatory** (see "Mandatory tests" below). **For any tool that touches sensitive data or performs writes** (`destructiveHint`, anything under `accountId`-required, credential/PII-bearing bodies), also run a **model-diversity cross-review** of the diff via `.codex/bin/codex-review` — catches account-scoping leaks, wrong route, missing destructive annotation. Pure docs/comment/lint-only changes are exempt. **Enforcement reality:** this gate is self-run for in-loop work — only `pnpm prepublishOnly` (and the root `pre-deploy-gate.sh` hook) hard-blocks at *publish* time. Do not rely on a hook to catch a lint/type/test failure mid-loop; run `pnpm check` yourself and read the output.
 4. **⛔ Tool↔route parity (fail-closed gate)** — a tool is NOT done when it type-checks; it is done when its zod schema and handler match the **real Chatwoot route** end-to-end. For each new/changed tool verify: (a) the handler hits a route that actually exists in `../Chatwoot/config/routes.rb` (cite it in the JDoc, as `pipeline-cards.ts` does); (b) the zod `inputSchema` matches the params the controller accepts (types too — e.g. stage IDs are `z.string()`, not number); (c) the right annotation (`readOnlyHint`/`idempotentHint`/`destructiveHint`); (d) account scoping correct (`optionalAccountId` for read/CRUD, required `accountId` for irreversible ops); (e) it is registered in `src/tools/index.ts` — **no orphan tool** (an exported `register` not wired into the aggregator never loads). If a single-file edit is intentionally registry-only or internal, state that explicitly.
 5. **Real-behavior test** — `pnpm build` (tsup → `dist/index.js`), then exercise the changed tool over MCP stdio against a real NooviChat instance (or via an MCP host). The vitest suite asserts the handler builds the correct URL with mocked `client`; the smoke proves the route resolves and returns the expected shape. A green `pnpm test` alone does **not** satisfy this — prove the tool calls the right route against a live API when feasible.
-6. **⛔ Contract sync — downstream of the Chatwoot API (MANDATORY for every fix AND feature)** — **this server is a CONSUMER of the Chatwoot REST API; it is the *downstream* side of the contract.** Ask explicitly: *did the Chatwoot API change (route/param/response field/status/auth), or did I change a tool's route/schema that must mirror it?* If yes, the tool here is updated **in the same cycle** — never leave silent drift. Cross-check the Chatwoot side `../Chatwoot/docs/rules/mcp-sync.md` (the keystone is the Chatwoot OpenAPI spec under `Chatwoot/swagger/`; the root detector `Chatwoot/.claude/scripts/downstream-sync-check.sh` maps a touched resource to its MCP counterpart file). A route/contract change → update the tool **and** bump the package version **and** `pnpm publish` the same day (and flag the sibling `@nooviai/n8n-nodes-noovichat` for the matching bump). If nothing API-facing changed, say so explicitly. Never skip the question.
-7. **Atomic commit (autonomous)** — Conventional Commits, one logical unit, deployable/revertable alone. Commit straight to `main`; this is NOT a human gate. `pnpm version` bump is reserved for the human-approved release step, not every commit.
+6. **⛔ Contract sync — downstream of the Chatwoot API (MANDATORY for every fix AND feature)** — **this server is a CONSUMER of the Chatwoot REST API; it is the *downstream* side of the contract.** Ask explicitly: *did the Chatwoot API change (route/param/response field/status/auth), or did I change a tool's route/schema that must mirror it?* If yes, the tool here is updated **in the same cycle** — never leave silent drift. Cross-check the Chatwoot side `../Chatwoot/docs/rules/mcp-sync.md` (the keystone is the Chatwoot OpenAPI spec under `Chatwoot/swagger/`; the root detector `Chatwoot/.claude/scripts/downstream-sync-check.sh` maps a touched resource to its MCP counterpart file). A route/contract change → update the tool **and** bump `package.json` in the same commit (CI publishes on push to `main`) and flag the sibling `@nooviai/n8n-nodes-noovichat` for the matching bump. If nothing API-facing changed, say so explicitly. Never skip the question.
+7. **Atomic commit (autonomous)** — Conventional Commits, one logical unit, deployable/revertable alone. Commit straight to `main`; this is NOT a human gate. Bump `package.json` in this commit when the tool/API contract changed.
 8. **⛔ Close the cycle — update internal docs — MANDATORY, NEVER skip.** Update canonical technical docs (the private Obsidian process) for anything that changed (tools, resources, API mirroring), and the README "Features exposed" table when a tool was added/removed. If nothing documentable changed (pure refactor, lint, trivial fast-path edit), state that and skip — but always ask.
 
-**The only thing outside this autonomous loop is production release** — `pnpm version` + `pnpm publish --access public` + the tag push. Run `/pre-publish-audit` first (**clean tree + HEAD pushed** + `pnpm check` + `pnpm build` + `dist/index.js` present); G3 (Chatwoot deploy window) does **not** apply to this versioned npm package. It needs human approval + the 5 golden rules and is gated by the root `pre-deploy-gate.sh` hook (G1/G2). The internal-docs update (step 8) IS part of the loop and closes it.
+**Local `pnpm publish` from a dirty tree is outside this loop.** Fan-out
+bumps `package.json` in the same commit; push `main` and CI publishes.
+The internal-docs update (step 8) IS part of the loop and closes it.
 
 ### ⛔ Native cohesion & reuse-first (build it as if it shipped in the catalog)
 
@@ -169,26 +173,23 @@ When the API changes upstream, **all three must be updated**.
 
 If a backend route changed:
 1. Update the matching tool file here
-2. Bump the package minor version (e.g., `0.1.0` → `0.2.0`) for new tools, or
-   major version for breaking signature changes
-3. Publish via `pnpm publish` from a clean working tree (Regra de Ouro 1)
+2. Bump `package.json` in the same commit (minor for new tools, major for
+   breaking signatures)
+3. Push `main` — `.github/workflows/publish.yml` publishes if that version
+   is not on npm (G1/G2; G3 is Chatwoot-only)
 4. Restart MCP hosts (they spawn `npx -y @nooviai/noovichat-mcp` per session)
 
 ## Deploy / publish
 
-`npm publish` is a deploy gate (see root `docs/rules/deploy-safety.md`).
-Once published, every client that runs `npx -y @nooviai/noovichat-mcp`
-gets it on next invocation. **Never publish during business hours BR** (Seg-Sex 08-19h BRT).
+Registry publish is **CI**, not a local reflex. After a contract fan-out,
+bump `package.json` and push `main`. The workflow publishes when git is
+ahead of npm; docs-only commits no-op. Local `pnpm publish` still needs a
+clean tree (G1) and HEAD pushed (G2). A published version cannot be removed.
 
 ```bash
-# Bump version
-pnpm version patch # or minor / major
-
-# Build + check (runs typecheck + lint + tests)
-pnpm prepublishOnly
-
-# Publish
-pnpm publish --access public
+# Fan-out: bump in the same commit as the tool change, then:
+git push origin main
+# CI: lint/test/build → publish-if-needed.sh
 ```
 
 The `prepublishOnly` script enforces:
@@ -221,7 +222,7 @@ in NooviChat. But:
    - Asserts handler builds the right URL (mock `client`)
 6. Run `pnpm check`.
 7. Update README's "Features exposed" table.
-8. Bump version + publish (human-approved; G1/G2, not the Chatwoot G3 window).
+8. Bump `package.json` in the same commit; CI publishes on push to `main`.
 
 ## Common pitfalls
 

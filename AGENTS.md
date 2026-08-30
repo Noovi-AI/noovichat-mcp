@@ -11,11 +11,11 @@ wrapper — all business logic lives in the Rails app. Stack: TypeScript strict,
 Zod, `tsup` build, `vitest`, Biome (lint+format).
 
 Codex may edit `src/tools/`, `src/client.ts`, `src/_helpers.ts` (via the
-`_helpers.ts` under `src/tools/`), tests, and docs. Do not run `pnpm
-version`, `pnpm publish`, or push a version tag unless a human explicitly
-requested that release action for the current turn — a published npm version
-cannot be removed, only deprecated, and every MCP host picks it up on next
-`npx` invocation.
+`_helpers.ts` under `src/tools/`), tests, and docs. When a Chatwoot API
+change updates a tool here, **bump `package.json` in the same commit** and
+push `main` — GitHub Actions publishes if that version is not on npm. Do
+not `pnpm publish` from a dirty local tree. A published version cannot be
+removed, only deprecated.
 
 Cycle: `recon -> implement (reuse-first: one resource per src/tools/*.ts, a
 single register: RegisterFn, reuse _helpers.ts — safeHandler,

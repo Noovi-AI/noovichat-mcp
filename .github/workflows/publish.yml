@@ -1,32 +1,44 @@
 name: Publish to npm
 
+# Publishes when git version is newer than npm. Tag push still works.
+# Docs-only commits on main no-op. Contract change without bump: AUTO_BUMP patch.
 on:
   push:
+    branches: [main]
     tags:
       - "v*.*.*"
   workflow_dispatch:
 
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   publish:
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: pnpm/action-setup@v4
         with:
           version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org/
       - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm check
       - run: pnpm build
-      - run: pnpm publish --access public --no-git-checks
+      - name: Publish if unpublished (or auto-bump contract drift)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          AUTO_BUMP: ${{ github.ref == 'refs/heads/main' && '1' || '0' }}
+        run: bash .github/scripts/publish-if-needed.sh
