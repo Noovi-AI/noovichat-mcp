@@ -30,6 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A server older than v4.17.0.6 does not return `stage_version`, and the field is
   then omitted rather than sent as `null`.
 
+## [0.16.0] - 2026-08-30
+
+### Added
+
+- **`get_profile`** reads `GET /api/v1/profile` so an operator can discover
+  the token's agent and account memberships without conversation CRUD. Helpdesk
+  list/get/toggle/messages stay on n8n `@nooviai/n8n-nodes-noovichat` + REST.
+
+### Changed
+
+- README no longer hardcodes per-area tool totals. Cursor (`.cursor/mcp.json`)
+  and VS Code (`.vscode/mcp.json` `servers`) config blocks are documented.
+  `.mcp.json.example` is included in the npm pack.
+
+## [0.15.0]
+
 ### Added
 
 - **`get_appointment_availability_range`** answers availability for a range of

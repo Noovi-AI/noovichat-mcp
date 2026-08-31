@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "noovichat": {
+      "command": "npx",
+      "args": ["-y", "@nooviai/noovichat-mcp"],
+      "env": {
+        "NOOVICHAT_BASE_URL": "https://chat.example.com",
+        "NOOVICHAT_API_TOKEN": "your-api-token",
+        "NOOVICHAT_ACCOUNT_ID": "1"
+      }
+    }
+  }
+}

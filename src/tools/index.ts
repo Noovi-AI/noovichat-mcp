@@ -46,6 +46,7 @@ import { register as registerCaptainAi } from "./captain-ai.js";
 import { register as registerCaptainHook } from "./captain-hook.js";
 import { register as registerConversationSummary } from "./conversation-summary.js";
 import { register as registerFlowBuilder } from "./flow-builder.js";
+import { register as registerProfile } from "./profile.js";
 // ── Admin / diagnostic ────────────────────────────────────────────────────────
 // NOTE: the NooviChat licensing and operational authorization boundary is
 // deliberately NOT exposed as MCP tools; it must not be readable or mutable by
@@ -78,6 +79,7 @@ const registrations = [
   registerCaptainAi,
   registerConversationSummary,
   registerAudio,
+  registerProfile,
 ];
 
 export function registerAllTools(server: McpServer, client: NooviChatClient): void {

@@ -18,36 +18,49 @@ instance using natural language. Ask Claude to "move card #42 to the
 Negotiation stage" or "list all follow-ups scheduled for tomorrow" and the
 model uses these tools to get it done.
 
-The server wraps the NooviChat REST API and exposes a broad tool catalog across
-the NooviChat feature modules — every customization the NooviChat platform adds on
-top of Chatwoot, plus the most useful Chatwoot-native operations needed
-for them to work end-to-end.
+The server wraps the NooviChat REST API and exposes the NooviChat feature
+modules: Pipeline Pro, follow-ups, appointments, broadcasts, WhatsApp
+(WAHA / UAZAPI / Hub), Captain AI, lead scoring, companies, internal chat
+and related extras. It does **not** expose core helpdesk CRUD
+(conversations, contacts, messages, inboxes, teams, v1/v2 reports). For
+those, use [`@nooviai/n8n-nodes-noovichat`](https://www.npmjs.com/package/@nooviai/n8n-nodes-noovichat)
+or the REST API.
+
+**Dual path**
+
+| Precisa… | Superfície |
+|---|---|
+| Pipeline, follow-up, WhatsApp, agenda, broadcast, Captain, companies, chat interno | este MCP |
+| Descobrir contas do token | `get_profile` |
+| CRUD de conversa / contato / mensagem / inbox / agente / time | n8n + REST |
+| Campaign clássica e SLA | n8n (o MCP **não** tem esses recursos) |
+
+Operator skills with the real tool names: public plugin
+[`Noovi-AI/noovichat-skills`](https://github.com/Noovi-AI/noovichat-skills).
+Do not invent names like `conversations_list` — they are not registered here.
 
 ## Features exposed
 
-| Area | Tools | Highlights |
-|---|---|---|
-| **Pipeline Pro — core** | 32 | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore, additional (non-primary) contacts/conversations |
-| **Pipeline automations** | 24 | CRUD, execute, dry-run, validate, audit logs, executions, templates |
-| **Pipeline activities** | 27 | Activities CRUD, sequences, templates, status transitions |
-| **Pipeline sequences** | 8 | Card-attached cadences, account-scoped external start, 1–90 day analytics summary |
-| **Pipeline webhooks** | 9 | Outbound delivery CRUD/test/secret rotation + separate public automation trigger/verify |
-| **Follow-Ups** | 24 | Schedule, cancel, templates, items, variables, automations, reports |
-| **Atendimentos** | 31 | Appointments, services, professionals, partners, availability (single day and range), Google Calendar sync |
-| **Broadcasts** | 14 | Mass-send WhatsApp campaigns (CSV/tags/kanban/whatsapp_group), blacklist, pause/resume, duplicate |
-| **WhatsApp Hub (NooviConnect)** | 28 | Sessions, groups & channels, hub report, create/leave group, participants (add/remove/promote/demote), group settings (name/topic/photo/locked/announce), invite link, join/preview group by link, group picture, unfollow channel, send poll/location, profile (read/status), check number, WhatsApp Business labels |
-| **WhatsApp Templates** | 6 | Custom CRUD over Meta Cloud + sync from Meta |
-| **WAHA** | 14 | Self-hosted WhatsApp gateway: status, QR, pairing, sessions, settings, sync |
-| **UAZAPI** | 8 | Alternative WhatsApp gateway: status, settings, connect/disconnect, pairing |
-| **Lead Scoring** | 15 | Rules, logs, dashboard, distribution, trends, top leads, bulk recalc |
-| **Internal Chat** | 14 | Agent-to-agent DMs, groups, members, messages CRUD, mark read |
-| **Companies** | 6 | B2B grouping, search, CRUD |
-| **Atendimento ext.** | 12 | LGPD delete/export, bulk update, consent records, forwards, merge, history |
-| **Google Calendar** | 8 | Sync to/from, bulk sync, toggle, status, circuit breaker controls |
-| **Captain AI hook** | 7 | Preferences + 5 synchronous AI tasks (rewrite, summarize, reply, label, follow-up) |
-| **Whitelabel (super_admin)** | 16 | Branding, AI providers, scripts, audit logs, backups |
-| **NooviLabs / Audio** | 0 (today) | No public API today; implementation notes stay out of roadmap source |
-| **Total** | Generated from source | Count tool registrations during release instead of hardcoding a number |
+Counts change when `registerTool` calls are added. Do not copy a frozen total
+from an old README. Live inventory: `src/tools/*.ts`, the skills snapshot
+`scripts/tools.snapshot.json` in `NooviChat-Skills`, or `tools/list` on a
+running server.
+
+| Area | Highlights |
+|---|---|
+| **Profile** | Token identity + account memberships (`get_profile`) |
+| **Pipeline Pro** | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore |
+| **Pipeline automations** | CRUD, execute, dry-run, validate, audit logs, templates |
+| **Pipeline activities / sequences / webhooks** | Activities, card cadences, outbound webhooks |
+| **Follow-Ups** | Schedule, cancel, templates, automations, reports |
+| **Atendimentos** | Appointments, services, professionals, availability, Google Calendar |
+| **Broadcasts** | Mass-send, blacklist, pause/resume |
+| **WhatsApp** | Hub (NooviConnect), Meta templates, WAHA, UAZAPI |
+| **Lead scoring / companies** | Rules, dashboard, B2B company CRUD+search |
+| **Internal chat** | Agent-to-agent DMs and groups (not customer conversations) |
+| **Atendimento extensions** | LGPD, bulk update, consent, forwards, merge — **not** conversation list |
+| **Captain AI hook** | Preferences + rewrite / summarize / reply / label / follow-up |
+| **Whitelabel** | `super_admin` only — not for routine operator use |
 
 ## Install
 
@@ -78,10 +91,52 @@ Claude Code settings:
 
 Restart the MCP host. The NooviChat MCP tools become available to the model.
 
-### Cursor / VS Code (Continue)
+Copy [`.mcp.json.example`](.mcp.json.example) in a project that uses Claude Code,
+Cursor or VS Code. The npm pack includes that file (`files` in `package.json`).
 
-Same pattern — point the MCP config at this package via `npx`. See your
-host's MCP documentation for the exact format.
+### Cursor
+
+Project file `.cursor/mcp.json` (or Cursor Settings → MCP). Same `mcpServers`
+shape as Claude:
+
+```json
+{
+  "mcpServers": {
+    "noovichat": {
+      "command": "npx",
+      "args": ["-y", "@nooviai/noovichat-mcp"],
+      "env": {
+        "NOOVICHAT_BASE_URL": "https://chat.example.com",
+        "NOOVICHAT_API_TOKEN": "your-api-token-here",
+        "NOOVICHAT_ACCOUNT_ID": "1"
+      }
+    }
+  }
+}
+```
+
+### VS Code
+
+Workspace file `.vscode/mcp.json` (VS Code 1.99+). The key is `servers`, not
+`mcpServers`:
+
+```json
+{
+  "servers": {
+    "noovichat": {
+      "command": "npx",
+      "args": ["-y", "@nooviai/noovichat-mcp"],
+      "env": {
+        "NOOVICHAT_BASE_URL": "https://chat.example.com",
+        "NOOVICHAT_API_TOKEN": "your-api-token-here",
+        "NOOVICHAT_ACCOUNT_ID": "1"
+      }
+    }
+  }
+}
+```
+
+Ask the model to call `get_profile` once if you are unsure of `NOOVICHAT_ACCOUNT_ID`.
 
 ## Configuration
 
@@ -210,13 +265,11 @@ business-hours window (G3) does **not** apply to this package.
 
 [MIT](LICENSE) — Copyright (c) 2026 Noovi.
 
-This project is forked from [`fazer-ai/mcp-chatwoot`](https://github.com/fazer-ai/mcp-chatwoot)
-under MIT. The original copyright notice is preserved in [LICENSE](LICENSE).
-
 ## Related Noovi projects
 
 - [`@nooviai/n8n-nodes-noovichat`](https://www.npmjs.com/package/@nooviai/n8n-nodes-noovichat)
-  — n8n community node (REST consumer, similar surface)
+  — n8n community node (REST consumer; includes conversation/contact/message CRUD)
+- Operator skills plugin: public `NooviChat-Skills` (Claude / Cursor / Codex)
 - [NooviChat](https://noovichat.com) — the platform itself
 
 ## Support
