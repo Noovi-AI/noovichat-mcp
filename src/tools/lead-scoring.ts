@@ -333,7 +333,11 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Bulk recalculate lead scores",
       description:
-        "Re-run all enabled rules across the account. Heavy operation — schedules a background job.",
+        "Rebuild every card's lead score by replaying its scoring log history, in order. " +
+        "Heavy operation — schedules a background job and reports the outcome as a notification. " +
+        "Only accounts with rule-based Lead Score have that history: for any other account the job " +
+        "takes no action and reports the reason, since rebuilding from an empty history would zero " +
+        "every score. Cards with no log entries and cards with a manual score override are left untouched.",
       inputSchema: {
         account_id: accountId,
         scope: z

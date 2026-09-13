@@ -711,14 +711,19 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Recalculate card lead score",
       description:
-        "Recompute the lead score for a card by re-running all enabled rules. Returns " +
-        "lead_score, lead_score_factors, lead_score_category and three timestamps: " +
+        "Recompute the lead score for a card with the heuristic engine. Returns `recalculated` " +
+        "plus lead_score, lead_score_factors, lead_score_category and three timestamps: " +
         "`lead_score_updated_at` (when the score was computed), `card_updated_at` (when the " +
         "CARD was last updated) and the legacy `updated_at`. On THIS route `updated_at` " +
         "carries the score timestamp, not the card's — read `card_updated_at` when you mean " +
         "the card. Recalculating writes the score columns directly and does NOT bump the " +
         "card's timestamp, so `card_updated_at` normally comes back OLDER than " +
-        "`lead_score_updated_at`; that is expected, not a stale read.",
+        "`lead_score_updated_at`; that is expected, not a stale read. " +
+        "ALWAYS check `recalculated`: it is false — with the stored values returned unchanged — " +
+        "when the card has a manual score override, and when the account uses rule-based Lead " +
+        "Score, where the rules engine owns the column and the heuristic must not overwrite it. " +
+        "The legacy /pipeline_cards/:id/recalculate_score route differs: it DOES overwrite a " +
+        "manual override.",
       // R6 (audit 2026-08): this route's `updated_at` always carried
       // lead_score_updated_at, while the legacy /pipeline_cards/:id/recalculate_score
       // route returns the card's. The published meaning was kept so external
