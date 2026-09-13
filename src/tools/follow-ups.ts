@@ -456,11 +456,32 @@ export const register: RegisterFn = (server, client) => {
                     .describe("Follow-up variable name (e.g. 'contact_name') or literal text"),
                 }),
               )
+              .optional()
               .describe("Ordered BODY parameters ({{1}}, {{2}}, …)"),
+            header: z
+              .object({
+                media_url: z
+                  .string()
+                  .describe("Public https URL of the file — WhatsApp fetches it when sending"),
+                media_type: z
+                  .enum(["document", "image", "video"])
+                  .optional()
+                  .describe("Header format declared by the approved template"),
+                media_name: z
+                  .string()
+                  .optional()
+                  .describe("Filename shown to the recipient (DOCUMENT headers)"),
+              })
+              .optional()
+              .describe(
+                "Required when the approved template declares a media header: Meta rejects " +
+                  "the send without this parameter, it does not deliver without the file.",
+              ),
           })
           .optional()
           .describe(
-            'Template parameter mapping, e.g. { "body": [ { "type": "variable", "value": "contact_name" } ] }',
+            'Template parameter mapping, e.g. { "body": [ { "type": "variable", "value": "contact_name" } ], ' +
+              '"header": { "media_url": "https://cdn.example.com/file.pdf", "media_type": "document" } }',
           ),
       },
     },
