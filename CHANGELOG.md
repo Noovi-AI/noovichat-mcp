@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-13
+
+### Added
+
+- **`create_followup_template_item` accepts the template's media header.** The
+  mapping schema declared only `body`, and Zod strips what it does not declare,
+  so a `header` sent by a client vanished before reaching the API. An approved
+  template with a DOCUMENT/IMAGE/VIDEO header requires that parameter on every
+  send — Meta rejects the message without it rather than delivering it without
+  the file. Pass
+  `{ "header": { "media_url": "https://…", "media_type": "document", "media_name": "file.pdf" } }`
+  alongside `body`; `media_url` must be a public https URL, because WhatsApp
+  fetches it at send time.
+
+  `body` became optional in the same shape: a template can have a media header
+  and no variables in its text, and the server already resolves that case.
+
 ### Changed
 
 - **`move_card_to_stage` reads the card before moving it.** Since NooviChat
