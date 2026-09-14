@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `body` became optional in the same shape: a template can have a media header
   and no variables in its text, and the server already resolves that case.
+  `media_type` is **required** whenever `header` is sent — the server answers
+  422 without it. That validation landed after a review found that a header
+  missing its type was sent to Meta as a TEXT parameter for a document
+  header, which Meta refuses; the tool now refuses it before the request.
 
 ### Changed
 

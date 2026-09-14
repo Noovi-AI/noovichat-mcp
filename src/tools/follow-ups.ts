@@ -465,8 +465,12 @@ export const register: RegisterFn = (server, client) => {
                   .describe("Public https URL of the file — WhatsApp fetches it when sending"),
                 media_type: z
                   .enum(["document", "image", "video"])
-                  .optional()
-                  .describe("Header format declared by the approved template"),
+                  .describe(
+                    "Header format declared by the approved template. Required whenever " +
+                      "`header` is sent: without it the server answers 422, and before it " +
+                      "validated this the file URL was sent as a TEXT parameter for a " +
+                      "document header, which Meta refuses.",
+                  ),
                 media_name: z
                   .string()
                   .optional()
