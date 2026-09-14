@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-14
+
+### Changed
+
+- **`media_type` is now required inside `header`.** NooviChat started
+  validating the block (server commit `126a035ddf`) and answers 422 when it is
+  missing. Until then a header without its type was forwarded to Meta as a
+  TEXT parameter for a document header, which Meta refuses — the tool let you
+  build exactly that payload. Accepted values are `document`, `image` and
+  `video`, and `media_url` is capped at 2000 characters by the server.
+
+  Published as a patch because 0.17.0 shipped the `header` block with
+  `media_type` optional; a client written against 0.17.0 that omits it now
+  gets a 422 from an updated server.
+
 ## [0.17.0] - 2026-09-13
 
 ### Added
@@ -23,10 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   `body` became optional in the same shape: a template can have a media header
   and no variables in its text, and the server already resolves that case.
-  `media_type` is **required** whenever `header` is sent — the server answers
-  422 without it. That validation landed after a review found that a header
-  missing its type was sent to Meta as a TEXT parameter for a document
-  header, which Meta refuses; the tool now refuses it before the request.
 
 ### Changed
 
