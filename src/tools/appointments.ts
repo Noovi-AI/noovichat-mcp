@@ -451,7 +451,7 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get appointment metrics",
       description:
-        "Return {data} with counts, no-show rate, revenue, professional/service breakdowns, daily series, and the effective date range.",
+        "Return {data} with the appointment report for a window (max one year): counts by status, no-show/attendance/cancellation rates, schedule occupancy rate, average booking lead time in hours, realized/forecast revenue, revenue lost to no-shows and to cancellations, average ticket, new vs returning clients, breakdowns by professional/service/day/day+status/weekday+hour, and the effective date range. attendance_rate, cancellation_rate, occupancy_rate, average_ticket_cents and lead_time_hours are null when there is no base to compute them — null means no data, not zero.",
       inputSchema: {
         account_id: optionalAccountId,
         from: absoluteDateTime.optional(),
