@@ -11,7 +11,12 @@
  *   /api/v1/accounts/:account_id/follow-up-templates (lines 252-265)
  *     member: POST preview, DELETE attachments/:attachment_id
  *     collection: GET variables
- *     nested: items (POST :reorder collection)
+ *     nested: items (index/show/create/update/destroy + POST :reorder collection;
+ *             PUT is accepted as an alias of PATCH on items/:id)
+ *
+ * Not exposed: POST /follow-ups/import (multipart `import_file` CSV upload — the
+ * MCP client only sends JSON) and item/template file uploads (`attachment`,
+ * `attachments` multipart fields). Attachment DELETE is JSON and is exposed.
  *
  *   /api/v1/accounts/:account_id/follow-up-automations (line 266)
  *
@@ -46,6 +51,89 @@ const automationId = z.number().int().positive().describe("Follow-up automation 
 const followUpStatus = z
   .enum(["pending", "scheduled", "sending", "sent", "failed", "cancelled"])
   .describe("Follow-up delivery status");
+
+// Fields of FollowUpTemplateItemsController#item_params (wrapper
+// `follow_up_template_item`). Shared by create and update.
+// Required on create by the backend (FollowUpTemplateItem::ITEM_TYPES).
+const templateItemType = z
+  .enum(["text", "image", "audio", "video", "document", "whatsapp_template"])
+  .describe(
+    "Step type — `text` requires `content`; media types use attachments; " +
+      "`whatsapp_template` sends a Meta-approved WhatsApp template (official inbox, " +
+      "outside the 24h window) and falls back to `content` text otherwise",
+  );
+
+const templateItemFields = {
+  content: z
+    .string()
+    .optional()
+    .describe(
+      "Message body. Required for `text`. For `whatsapp_template` it is the plain-text " +
+        "fallback sent on non-official providers (WAHA/UazAPI) or inside the 24h window",
+    ),
+  delay_seconds: z
+    .number()
+    .int()
+    .nonnegative()
+    .optional()
+    .describe("Seconds after the previous step before this one fires"),
+  position: z.number().int().nonnegative().optional(),
+  // whatsapp_template item — approved-template reference + parameter mapping.
+  whatsapp_template_name: z
+    .string()
+    .optional()
+    .describe("Approved Meta template name (required when item_type is 'whatsapp_template')"),
+  whatsapp_template_language: z
+    .string()
+    .optional()
+    .describe("Approved template language code, e.g. 'pt_BR'"),
+  whatsapp_template_namespace: z
+    .string()
+    .optional()
+    .describe("Template namespace (360Dialog only)"),
+  whatsapp_template_mapping: z
+    .object({
+      body: z
+        .array(
+          z.object({
+            type: z.enum(["variable", "text"]),
+            value: z
+              .string()
+              .describe("Follow-up variable name (e.g. 'contact_name') or literal text"),
+          }),
+        )
+        .optional()
+        .describe("Ordered BODY parameters ({{1}}, {{2}}, …)"),
+      header: z
+        .object({
+          media_url: z
+            .string()
+            .describe("Public https URL of the file — WhatsApp fetches it when sending"),
+          media_type: z
+            .enum(["document", "image", "video"])
+            .describe(
+              "Header format declared by the approved template. Required whenever " +
+                "`header` is sent: without it the server answers 422, and before it " +
+                "validated this the file URL was sent as a TEXT parameter for a " +
+                "document header, which Meta refuses.",
+            ),
+          media_name: z
+            .string()
+            .optional()
+            .describe("Filename shown to the recipient (DOCUMENT headers)"),
+        })
+        .optional()
+        .describe(
+          "Required when the approved template declares a media header: Meta rejects " +
+            "the send without this parameter, it does not deliver without the file.",
+        ),
+    })
+    .optional()
+    .describe(
+      'Template parameter mapping, e.g. { "body": [ { "type": "variable", "value": "contact_name" } ], ' +
+        '"header": { "media_url": "https://cdn.example.com/file.pdf", "media_type": "document" } }',
+    ),
+};
 
 export const register: RegisterFn = (server, client) => {
   // ── Follow-ups (account-level read + nested CRUD under conversation) ───────
@@ -340,6 +428,28 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
+    "delete_followup_template_attachment",
+    {
+      title: "Delete template attachment",
+      description:
+        "Permanently delete (purge) one file attached to a follow-up template. Attachment IDs are in get_followup_template's `attachments`. Returns the updated template; 404 when the attachment or an active template is not found.",
+      inputSchema: {
+        account_id: accountId,
+        template_id: templateId,
+        attachment_id: z.number().int().positive().describe("Template attachment ID"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, template_id, attachment_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/attachments/${attachment_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
     "preview_followup_template",
     {
       title: "Preview follow-up template",
@@ -410,83 +520,8 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,
-        // Required by the backend (FollowUpTemplateItem::ITEM_TYPES).
-        item_type: z
-          .enum(["text", "image", "audio", "video", "document", "whatsapp_template"])
-          .describe(
-            "Step type — `text` requires `content`; media types use attachments; " +
-              "`whatsapp_template` sends a Meta-approved WhatsApp template (official inbox, " +
-              "outside the 24h window) and falls back to `content` text otherwise",
-          ),
-        content: z
-          .string()
-          .optional()
-          .describe(
-            "Message body. Required for `text`. For `whatsapp_template` it is the plain-text " +
-              "fallback sent on non-official providers (WAHA/UazAPI) or inside the 24h window",
-          ),
-        delay_seconds: z
-          .number()
-          .int()
-          .nonnegative()
-          .optional()
-          .describe("Seconds after the previous step before this one fires"),
-        position: z.number().int().nonnegative().optional(),
-        // whatsapp_template item — approved-template reference + parameter mapping.
-        whatsapp_template_name: z
-          .string()
-          .optional()
-          .describe("Approved Meta template name (required when item_type is 'whatsapp_template')"),
-        whatsapp_template_language: z
-          .string()
-          .optional()
-          .describe("Approved template language code, e.g. 'pt_BR'"),
-        whatsapp_template_namespace: z
-          .string()
-          .optional()
-          .describe("Template namespace (360Dialog only)"),
-        whatsapp_template_mapping: z
-          .object({
-            body: z
-              .array(
-                z.object({
-                  type: z.enum(["variable", "text"]),
-                  value: z
-                    .string()
-                    .describe("Follow-up variable name (e.g. 'contact_name') or literal text"),
-                }),
-              )
-              .optional()
-              .describe("Ordered BODY parameters ({{1}}, {{2}}, …)"),
-            header: z
-              .object({
-                media_url: z
-                  .string()
-                  .describe("Public https URL of the file — WhatsApp fetches it when sending"),
-                media_type: z
-                  .enum(["document", "image", "video"])
-                  .describe(
-                    "Header format declared by the approved template. Required whenever " +
-                      "`header` is sent: without it the server answers 422, and before it " +
-                      "validated this the file URL was sent as a TEXT parameter for a " +
-                      "document header, which Meta refuses.",
-                  ),
-                media_name: z
-                  .string()
-                  .optional()
-                  .describe("Filename shown to the recipient (DOCUMENT headers)"),
-              })
-              .optional()
-              .describe(
-                "Required when the approved template declares a media header: Meta rejects " +
-                  "the send without this parameter, it does not deliver without the file.",
-              ),
-          })
-          .optional()
-          .describe(
-            'Template parameter mapping, e.g. { "body": [ { "type": "variable", "value": "contact_name" } ], ' +
-              '"header": { "media_url": "https://cdn.example.com/file.pdf", "media_type": "document" } }',
-          ),
+        item_type: templateItemType,
+        ...templateItemFields,
       },
     },
     async ({ account_id, template_id, ...body }) =>
@@ -496,6 +531,53 @@ export const register: RegisterFn = (server, client) => {
         return client.post(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items`, {
           follow_up_template_item: body,
         });
+      }),
+  );
+
+  server.registerTool(
+    "get_followup_template_item",
+    {
+      title: "Get template item",
+      description:
+        "Read one step of a follow-up template (item_type, content, delay_seconds, position, WhatsApp template fields, attachment).",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        item_id: templateItemId,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, template_id, item_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items/${item_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "update_followup_template_item",
+    {
+      title: "Update template item",
+      description:
+        "Update a step of a follow-up template. Only the fields sent are changed. Returns 404 when the template is inactive.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        template_id: templateId,
+        item_id: templateItemId,
+        item_type: templateItemType.optional(),
+        ...templateItemFields,
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, template_id, item_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.patch(
+          `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items/${item_id}`,
+          { follow_up_template_item: body },
+        );
       }),
   );
 
@@ -524,7 +606,8 @@ export const register: RegisterFn = (server, client) => {
     "reorder_followup_template_items",
     {
       title: "Reorder template items",
-      description: "Reorder the steps of a follow-up template.",
+      description:
+        "Reorder the steps of a follow-up template. Each item keeps its delay_seconds. Returns the reordered { payload: [...] }.",
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,
@@ -534,12 +617,15 @@ export const register: RegisterFn = (server, client) => {
           .describe("Item IDs in the desired order"),
       },
     },
-    async ({ account_id, template_id, ...body }) =>
+    async ({ account_id, template_id, item_ids }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
+        // The controller reads `items: [{ id, delay_seconds? }]` and answers 400
+        // "Items order required" to anything else — sending `item_ids` never
+        // reordered. Omitting delay_seconds keeps each item's current delay.
         return client.post(
           `/api/v1/accounts/${acc}/follow-up-templates/${template_id}/items/reorder`,
-          body,
+          { items: item_ids.map((id) => ({ id })) },
         );
       }),
   );

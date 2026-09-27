@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pipeline routes that existed in NooviChat without a tool.** 38 new tools:
+  - Products and the sales ledger (`pipeline-opportunities.ts`, new):
+    `list_pipeline_products`, `get_pipeline_products_performance`,
+    `get_pipeline_product`, `create_pipeline_product`,
+    `update_pipeline_product`, `deactivate_pipeline_product` (DELETE only sets
+    `active: false`), `list_card_opportunities`, `record_card_opportunity`,
+    `void_opportunity`, `get_opportunities_report`.
+  - Analytics (`pipeline-analytics.ts`, new): `get_pipeline_win_rate`,
+    `get_pipeline_sales_velocity`, `get_pipeline_forecast`,
+    `get_pipeline_conversion_metrics`, `get_pipeline_analysis`,
+    `get_pipeline_dashboard`, `export_pipeline_analytics` (CSV text),
+    `get_agent_pipeline_metrics`, `get_team_pipeline`,
+    `get_lost_reasons_analytics`, `list_common_lost_reasons`.
+  - Pipeline follow-up rules: `list_/get_/create_/update_/delete_pipeline_followup_rule`.
+  - Cards: `list_cards_paged` (GET `/pipeline/cards`: page/per_page,
+    `owner_id`, `lead_score_category`), `list_card_attachments`,
+    `delete_card_attachment`, `delete_card_note_attachment`,
+    `force_recalculate_card_lead_score` (legacy route that replaces a manual
+    override). `delete_card` accepts an optional `reason`, recorded as
+    `discard_reason`.
+  - Webhook credentials: `get_automation_webhook_credentials`,
+    `rotate_automation_webhook_token`, `get_sequence_webhook_credentials`,
+    `rotate_sequence_webhook_credentials`.
+  - Follow-up templates: `get_followup_template_item`,
+    `update_followup_template_item`, `delete_followup_template_attachment`.
+
+### Fixed
+
+- **`reorder_followup_template_items` never reordered.** It sent `item_ids`;
+  the server reads `items: [{ id }]` and answered 400. Input is unchanged.
+- **`list_activity_templates` filter was ignored.** It sent `type`; the server
+  reads `activity_type`. The tool now also accepts `category`, `active` and
+  `sort: "most_used"`.
+
+### Not exposed
+
+- Multipart uploads (card/note attachments, follow-up and card CSV imports):
+  the client only sends JSON.
+
 ## [0.17.1] - 2026-09-14
 
 ### Changed

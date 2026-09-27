@@ -18,6 +18,33 @@
  *
  * The top-level resource is preferred for create/update/destroy; the
  * namespaced one carries domain-specific actions.
+ *
+ * Namespaced CRUD /pipeline/cards (Pipeline::CardsController) vs the legacy
+ * /pipeline_cards (PipelineCardsController) — deliberate coverage decisions:
+ *   - GET  /pipeline/cards        → list_cards_paged. Differs for real: page/per_page
+ *     pagination with total_count, owner_id and lead_score_category filters, and
+ *     the full card JSON plus activity stats (legacy is cursor/offset, per stage).
+ *   - GET  /pipeline/cards/:id    → covered by get_card (same `as_json` payload).
+ *   - POST /pipeline/cards        → NOT exposed: create_card uses the legacy route,
+ *     which also checks pipeline reachability for the actor and resolves
+ *     related data; the namespaced create does neither.
+ *   - PATCH /pipeline/cards/:id   → NOT exposed: update_card's legacy route
+ *     refuses `status` with 422 (use mark_card_won/lost/reopen_card); the
+ *     namespaced update drops it silently and answers 200.
+ *   - DELETE /pipeline/cards/:id  → delete_card routes here ONLY when `reason` is
+ *     sent: this is the one route that records `discard_reason`.
+ *
+ * Attachments (Pipeline::AttachmentsController / NoteAttachmentsController):
+ *   GET    /pipeline/cards/:card_id/attachments
+ *   DELETE /pipeline/cards/:card_id/attachments/:id
+ *   DELETE /pipeline/cards/:card_id/note_attachments/:id
+ * Not exposed: POST .../attachments and POST .../note_attachments (multipart
+ * `attachment` upload — the MCP client only sends JSON) and
+ * GET .../attachments/:id (streams the raw file bytes; the index already
+ * returns each file's `url`).
+ *
+ * Legacy POST /pipeline_cards/:id/recalculate_score → force_recalculate_card_lead_score
+ * (it replaces a manual override; the namespaced lead_scores/recalculate does not).
  */
 
 import { z } from "zod";
@@ -177,6 +204,32 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
+    "list_cards_paged",
+    {
+      title: "List pipeline cards (page-based)",
+      description:
+        "List visible cards from GET /pipeline/cards with page/per_page pagination (meta: current_page, per_page, total_pages, total_count). " +
+        "Unlike list_cards it filters by owner_id and lead_score_category (hot/warm/cold) and returns the full card JSON plus activity stats per card.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineIdInput.optional(),
+        pipeline_stage: stageId.optional(),
+        owner_id: agentUserId.optional().describe("Owner (User) ID"),
+        contact_id: contactId.optional(),
+        lead_score_category: z.enum(["hot", "warm", "cold"]).optional(),
+        ...cardFilters,
+        ...pagination,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, ...params }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards`, params);
+      }),
+  );
+
+  server.registerTool(
     "list_discarded_cards",
     {
       title: "List discarded (soft-deleted) cards",
@@ -325,13 +378,27 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Delete (soft) pipeline card",
       description:
-        "Soft-delete a card (LGPD-compliant). Recoverable via restore_card within retention window.",
-      inputSchema: { account_id: accountId, card_id: cardId },
+        "Soft-delete a card (LGPD-compliant). Recoverable via restore_card within retention window. " +
+        "Pass `reason` to record why it was discarded (stored as discard_reason, shown by list_discarded_cards).",
+      inputSchema: {
+        account_id: accountId,
+        card_id: cardId,
+        reason: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Why the card is being discarded (recorded as discard_reason)"),
+      },
       annotations: { destructiveHint: true },
     },
-    async ({ account_id, card_id }) =>
+    async ({ account_id, card_id, reason }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
+        // Only Pipeline::CardsController#destroy reads a reason; the legacy route
+        // discards without one. Keep the legacy route when no reason is sent.
+        if (reason !== undefined) {
+          return client.delete(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}`, { reason });
+        }
         return client.delete(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}`);
       }),
   );
@@ -758,6 +825,91 @@ export const register: RegisterFn = (server, client) => {
         return client.post(
           `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/lead_scores/override`,
           body,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "force_recalculate_card_lead_score",
+    {
+      title: "Force-recalculate card lead score",
+      description:
+        "Recompute a card's lead score via the legacy POST /pipeline_cards/:id/recalculate_score. " +
+        "Unlike recalculate_card_lead_score it REPLACES a manual score override. It still returns " +
+        "`recalculated: false` (values unchanged) when the account uses rule-based Lead Score, whose " +
+        "engine owns the column. Returns id, recalculated, lead_score, lead_score_category, " +
+        "qualification_score, lead_score_factors, lead_score_updated_at, updated_at and card_updated_at " +
+        "(both the card's timestamp on this route).",
+      inputSchema: { account_id: optionalAccountId, card_id: cardId },
+    },
+    async ({ account_id, card_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/pipeline_cards/${card_id}/recalculate_score`);
+      }),
+  );
+
+  // ── Attachments ────────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_card_attachments",
+    {
+      title: "List card attachments",
+      description:
+        "List files attached to a card: id, filename, content_type, byte_size, created_at and url. Uploading is not available over MCP (multipart).",
+      inputSchema: { account_id: optionalAccountId, card_id: cardId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, card_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/pipeline/cards/${card_id}/attachments`);
+      }),
+  );
+
+  server.registerTool(
+    "delete_card_attachment",
+    {
+      title: "Delete card attachment",
+      description:
+        "Permanently delete (purge) a file attached to a card and log it in the card history. Requires the card destroy permission.",
+      inputSchema: {
+        account_id: accountId,
+        card_id: cardId,
+        attachment_id: z
+          .number()
+          .int()
+          .positive()
+          .describe("Attachment ID from list_card_attachments"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, card_id, attachment_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/attachments/${attachment_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "delete_card_note_attachment",
+    {
+      title: "Delete card note attachment",
+      description:
+        "Permanently delete (purge) a file uploaded to a card note. Requires update permission on the card; the server may still answer 403 when the actor is not allowed to remove that specific upload.",
+      inputSchema: {
+        account_id: accountId,
+        card_id: cardId,
+        attachment_id: z.number().int().positive().describe("Note attachment ID"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, card_id, attachment_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/pipeline/cards/${card_id}/note_attachments/${attachment_id}`,
         );
       }),
   );

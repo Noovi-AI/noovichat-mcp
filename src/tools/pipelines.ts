@@ -8,6 +8,17 @@
  *   PATCH  /api/v1/accounts/:account_id/pipelines/:id
  *   DELETE /api/v1/accounts/:account_id/pipelines/:id
  *   GET    /api/v1/accounts/:account_id/pipelines/:id/stages
+ *
+ * Stage-transition follow-up rules (PipelineFollowUpRulesController):
+ *   GET    /api/v1/accounts/:account_id/pipelines/:pipeline_id/follow-up-rules
+ *   GET    /api/v1/accounts/:account_id/pipelines/:pipeline_id/follow-up-rules/:id
+ *   POST   /api/v1/accounts/:account_id/pipelines/:pipeline_id/follow-up-rules
+ *   PATCH  /api/v1/accounts/:account_id/pipelines/:pipeline_id/follow-up-rules/:id (PUT alias)
+ *   DELETE /api/v1/accounts/:account_id/pipelines/:pipeline_id/follow-up-rules/:id
+ *
+ * A rule schedules a follow-up when a card enters `to_stage` (optionally only
+ * when it comes from `from_stage`). Create/update bodies are wrapped in
+ * `pipeline_follow_up_rule` (strong params); index returns `{ payload: [...] }`.
  */
 
 import { z } from "zod";
@@ -20,6 +31,74 @@ import {
 } from "./_helpers.js";
 
 const pipelineId = z.number().int().positive().describe("Pipeline ID");
+const followUpRuleId = z.number().int().positive().describe("Pipeline follow-up rule ID");
+const ruleStage = z
+  .string()
+  .min(1)
+  .describe('Stage key of this pipeline (e.g. "3321_qualificado")');
+
+// SendWindowConfigurable: when enabled, days is a non-empty array of weekdays
+// (0=Sunday..6=Saturday) and start/end are "HH:MM" with end after start.
+const sendWindow = z
+  .object({
+    enabled: z.boolean().optional(),
+    start: z.string().optional().describe('Window start, "HH:MM" 24h'),
+    end: z.string().optional().describe('Window end, "HH:MM" 24h, after start'),
+    days: z
+      .array(z.number().int().min(0).max(6))
+      .optional()
+      .describe("Allowed weekdays, 0=Sunday .. 6=Saturday"),
+  })
+  .describe(
+    "Restricts WHEN the generated follow-up may be sent. {} or enabled:false = no restriction",
+  );
+
+const followUpRuleFields = {
+  follow_up_template_id: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("Follow-up template to send. Required on create when content_mode is 'template'"),
+  from_stage: ruleStage
+    .nullable()
+    .optional()
+    .describe("Only fire when the card comes from this stage. Omit/null = from any stage"),
+  delay_minutes: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("Minutes after the stage change before the follow-up is sent"),
+  enabled: z.boolean().optional(),
+  content_mode: z
+    .enum(["template", "ai"])
+    .optional()
+    .describe(
+      "'template' sends the template; 'ai' has NooviAI write the message from ai_instruction",
+    ),
+  ai_instruction: z
+    .string()
+    .max(4096)
+    .optional()
+    .describe("Instruction for the AI-written message. Required when content_mode is 'ai'"),
+  sender_id: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe("Agent (User) who sends it. Mutually exclusive with sender_agent_bot_id"),
+  sender_agent_bot_id: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .optional()
+    .describe("Agent bot that sends it. Mutually exclusive with sender_id"),
+  conditions: z.record(z.string(), z.unknown()).optional().describe("Free-form conditions object"),
+  send_window: sendWindow.optional(),
+};
 
 export const register: RegisterFn = (server, client) => {
   server.registerTool(
@@ -288,6 +367,112 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.delete(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}`);
+      }),
+  );
+
+  // ── Stage-transition follow-up rules ───────────────────────────────────────
+  server.registerTool(
+    "list_pipeline_followup_rules",
+    {
+      title: "List pipeline follow-up rules",
+      description:
+        "List the follow-up rules of a pipeline, ordered by to_stage. Response: { payload: [rule] }.",
+      inputSchema: { account_id: optionalAccountId, pipeline_id: pipelineId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, pipeline_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}/follow-up-rules`);
+      }),
+  );
+
+  server.registerTool(
+    "get_pipeline_followup_rule",
+    {
+      title: "Get pipeline follow-up rule",
+      description: "Read one follow-up rule of a pipeline.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineId,
+        rule_id: followUpRuleId,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, pipeline_id, rule_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}/follow-up-rules/${rule_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "create_pipeline_followup_rule",
+    {
+      title: "Create pipeline follow-up rule",
+      description:
+        "Schedule a follow-up whenever a card of this pipeline enters to_stage. Stages must exist in the pipeline; validation errors return 422 { errors: [...] }.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineId,
+        to_stage: ruleStage.describe("Stage that triggers the rule when a card enters it"),
+        ...followUpRuleFields,
+      },
+    },
+    async ({ account_id, pipeline_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(`/api/v1/accounts/${acc}/pipelines/${pipeline_id}/follow-up-rules`, {
+          pipeline_follow_up_rule: body,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "update_pipeline_followup_rule",
+    {
+      title: "Update pipeline follow-up rule",
+      description: "Update a pipeline follow-up rule. Only the fields sent are changed.",
+      inputSchema: {
+        account_id: optionalAccountId,
+        pipeline_id: pipelineId,
+        rule_id: followUpRuleId,
+        to_stage: ruleStage.optional(),
+        ...followUpRuleFields,
+      },
+      annotations: { idempotentHint: true },
+    },
+    async ({ account_id, pipeline_id, rule_id, ...body }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.patch(
+          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}/follow-up-rules/${rule_id}`,
+          { pipeline_follow_up_rule: body },
+        );
+      }),
+  );
+
+  server.registerTool(
+    "delete_pipeline_followup_rule",
+    {
+      title: "Delete pipeline follow-up rule",
+      description:
+        "Delete a pipeline follow-up rule (204). Not reversible; requires administrator or follow_up_manage.",
+      inputSchema: {
+        account_id: accountIdSchema,
+        pipeline_id: pipelineId,
+        rule_id: followUpRuleId,
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, pipeline_id, rule_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/pipelines/${pipeline_id}/follow-up-rules/${rule_id}`,
+        );
       }),
   );
 };

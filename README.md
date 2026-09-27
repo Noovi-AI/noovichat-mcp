@@ -49,7 +49,8 @@ running server.
 | Area | Highlights |
 |---|---|
 | **Profile** | Token identity + account memberships (`get_profile`) |
-| **Pipeline Pro** | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore |
+| **Pipeline Pro** | Funnels, stages, cards CRUD, move/win/lost, bulk, GDPR restore, card attachments, stage follow-up rules |
+| **Pipeline sales & analytics** | Product catalog, per-card sales ledger (record/void), revenue report, win rate, velocity, forecast, per-pipeline dashboard, lost reasons |
 | **Pipeline automations** | CRUD, execute, dry-run, validate, audit logs, templates |
 | **Pipeline activities / sequences / webhooks** | Activities, card cadences, outbound webhooks |
 | **Follow-Ups** | Schedule, cancel, templates, automations, reports |

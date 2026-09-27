@@ -10,9 +10,15 @@
  *
  *   /api/v1/accounts/:account_id/pipeline/activity_sequences
  *     member: POST activate, POST deactivate, POST duplicate
+ *     collection: GET webhook_credentials, POST rotate_webhook_credentials
+ *       (account-wide inbound/outbound sequence webhook secrets; administrator only)
  *
  *   /api/v1/accounts/:account_id/pipeline/activity_templates
  *     member: POST duplicate
+ *
+ * GET /pipeline/activities/templates is covered by list_activity_templates
+ * (active: true, sort: "most_used" reproduces it; same filters), so it has no
+ * tool of its own.
  *
  * Activities are scheduled tasks attached to cards. Sequences are reusable
  * activity bundles. Templates are blueprints for creating activities.
@@ -590,10 +596,25 @@ export const register: RegisterFn = (server, client) => {
     "list_activity_templates",
     {
       title: "List activity templates",
-      description: "List reusable activity templates (single-activity blueprints).",
+      description:
+        "List reusable activity templates (single-activity blueprints). Response: { data, meta: { total, current_page, total_pages, per_page } }.",
       inputSchema: {
         account_id: optionalAccountId,
-        type: activityType.optional(),
+        // The controller reads `activity_type`; this field was once sent as `type`,
+        // which the server ignored — the filter silently did nothing.
+        activity_type: activityType.optional(),
+        category: z
+          .enum(["sales", "support", "onboarding", "follow_up", "customer_success"])
+          .optional()
+          .describe("Template category (PipelineActivityTemplate::CATEGORIES)"),
+        active: z
+          .boolean()
+          .optional()
+          .describe("true = only active, false = only inactive; omit for both"),
+        sort: z
+          .literal("most_used")
+          .optional()
+          .describe("Order by usage_count desc (default: newest first)"),
         ...pagination,
       },
       annotations: { readOnlyHint: true },
@@ -715,6 +736,56 @@ export const register: RegisterFn = (server, client) => {
         return client.post(
           `/api/v1/accounts/${acc}/pipeline/activity_templates/${template_id}/duplicate`,
           body,
+        );
+      }),
+  );
+
+  // ── Sequence webhook credentials (account-wide) ─────────────────────────────
+  server.registerTool(
+    "get_sequence_webhook_credentials",
+    {
+      title: "Get sequence webhook credentials",
+      description:
+        "Return the account's activity-sequence webhook credentials IN PLAIN TEXT: inbound_configured, " +
+        "inbound_url, inbound_secret, inbound_signature_version, inbound_replay_protection_enabled, " +
+        "outbound_configured, outbound_signing_secret and authentication_window_seconds. Treat the " +
+        "output as secrets. Administrator only; 503 when the credential configuration is invalid.",
+      inputSchema: { account_id: optionalAccountId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/pipeline/activity_sequences/webhook_credentials`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "rotate_sequence_webhook_credentials",
+    {
+      title: "Rotate sequence webhook credentials",
+      description:
+        "Rotate the account's activity-sequence webhook credentials and return the new payload (same shape as " +
+        "get_sequence_webhook_credentials). `inbound` replaces the inbound URL token and secret — external " +
+        "triggers must be updated; `outbound` replaces the signing secret receivers verify. Administrator " +
+        "only; 422 for an unknown scope, 503 when the rotation cannot be recorded.",
+      inputSchema: {
+        account_id: accountId,
+        credential_scope: z
+          .enum(["inbound", "outbound", "all"])
+          .optional()
+          .describe("Which credentials to rotate (default: all)"),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, credential_scope }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/activity_sequences/rotate_webhook_credentials`,
+          credential_scope === undefined ? {} : { credential_scope },
         );
       }),
   );

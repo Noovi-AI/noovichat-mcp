@@ -11,8 +11,10 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { NooviChatClient } from "../client.js";
 
 import { register as registerPipelineActivities } from "./pipeline-activities.js";
+import { register as registerPipelineAnalytics } from "./pipeline-analytics.js";
 import { register as registerPipelineAutomations } from "./pipeline-automations.js";
 import { register as registerPipelineCards } from "./pipeline-cards.js";
+import { register as registerPipelineOpportunities } from "./pipeline-opportunities.js";
 import { register as registerPipelineSequences } from "./pipeline-sequences.js";
 import { register as registerPipelineWebhooks } from "./pipeline-webhooks.js";
 // ── Pipeline Pro (NooviChat flagship) ────────────────────────────────────────
@@ -56,6 +58,8 @@ import { register as registerWhitelabel } from "./whitelabel.js";
 const registrations = [
   registerPipelines,
   registerPipelineCards,
+  registerPipelineOpportunities,
+  registerPipelineAnalytics,
   registerPipelineAutomations,
   registerPipelineActivities,
   registerPipelineSequences,

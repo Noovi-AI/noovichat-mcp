@@ -13,6 +13,8 @@
  *       GET    audit_logs
  *       POST   validate
  *       POST   dry_run
+ *       GET    webhook_credentials   (administrator; webhook-triggered automations only)
+ *       POST   rotate_webhook_token  (administrator; invalidates the previous URL)
  *     collection:
  *       GET    all_executions
  *       GET    all_audit_logs
@@ -763,5 +765,46 @@ export const register: RegisterFn = (server, client) => {
         next_step: "Pass this `flow` to create_pipeline_automation with trigger_type: 'event'.",
       });
     },
+  );
+
+  // ── Webhook trigger credentials ────────────────────────────────────────────
+  server.registerTool(
+    "get_automation_webhook_credentials",
+    {
+      title: "Get automation webhook credentials",
+      description:
+        "Return { webhook_configured, webhook_url } of a webhook-triggered automation. The URL embeds the " +
+        "secret token that lets anyone trigger it (see trigger_pipeline_automation_via_webhook) — treat it " +
+        "as a credential. Administrator only; 422 when the automation is not webhook-triggered.",
+      inputSchema: { account_id: optionalAccountId, automation_id: automationId },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ account_id, automation_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.get(
+          `/api/v1/accounts/${acc}/pipeline/automations/${automation_id}/webhook_credentials`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    "rotate_automation_webhook_token",
+    {
+      title: "Rotate automation webhook token",
+      description:
+        "Generate a new webhook token for a webhook-triggered automation and return the new " +
+        "{ webhook_configured, webhook_url }. The previous URL stops working immediately — every external " +
+        "caller must be updated. Audited. Administrator only; 422 when the automation is not webhook-triggered.",
+      inputSchema: { account_id: accountId, automation_id: automationId },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, automation_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.post(
+          `/api/v1/accounts/${acc}/pipeline/automations/${automation_id}/rotate_webhook_token`,
+        );
+      }),
   );
 };
