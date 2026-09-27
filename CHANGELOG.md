@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-27
+
+### Fixed
+
+- **Follow-up tools sent requests the NooviChat API ignored.** Found in the
+  NooviChat follow-up audit of 2026-09-27:
+  - `create_followup` / `update_followup` now send the `follow_up` envelope
+    with the field names the API reads (`follow_up_template_id`, `title`,
+    `inbox_id`, `template_params`). `template_id` was never read, so creating
+    from a template without `content` failed; `template_variables`,
+    `pipeline_card_id` and `attachment_ids` were dropped and are gone.
+    `scheduled_at` accepts ISO 8601 (no offset = account timezone) or epoch
+    seconds.
+  - `create_followup_template` / `update_followup_template` use the
+    `follow_up_template` envelope and expose `active`; `description`,
+    `category` and `attachment_ids` never existed on the API.
+  - `preview_followup_template` sends `context` (it sent `variables` and
+    `contact_id`, which were ignored).
+  - `get_followups_report` takes `since`/`until` (epoch seconds) plus
+    `status`/`source`; `from`/`to` were ignored, so every report covered all
+    time. `view: "export"` now asks for JSON explicitly.
+  - Status filters list only real statuses (`scheduled`/`sending` never
+    existed). Pagination params were removed from lists the API does not
+    paginate (templates, automations, conversation count); the account list
+    keeps `page`/`per_page` and search keeps `page`.
+
+### Added
+
+- `delete_followup` — permanently deletes a pending follow-up (destructive,
+  explicit `account_id`).
+
 ## [0.18.0] - 2026-09-27
 
 ### Added

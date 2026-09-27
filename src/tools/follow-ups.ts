@@ -30,6 +30,13 @@
  * sees/counts ITS OWN follow-ups on a conversation; an administrator token sees
  * all. The account-level index (list_followups) was already scoped this way.
  * Response shapes are unchanged — no breaking contract change, so no version bump.
+ *
+ * Contract audit 2026-09-27 (Chatwoot FU-35): follow-up and template writes now
+ * use the `follow_up` / `follow_up_template` envelopes the controllers require;
+ * fields the API never read (template_variables, pipeline_card_id,
+ * attachment_ids, description, category, pagination on unpaginated lists) are
+ * gone instead of being dropped server-side; reports take `since`/`until`
+ * (epoch seconds), not `from`/`to`.
  */
 
 import { z } from "zod";
@@ -38,7 +45,6 @@ import {
   accountId,
   conversationDisplayId,
   optionalAccountId,
-  pagination,
   resolveAccountId,
   safeHandler,
 } from "./_helpers.js";
@@ -48,9 +54,36 @@ const templateId = z.number().int().positive().describe("Follow-up template ID")
 const templateItemId = z.number().int().positive().describe("Follow-up template item ID");
 const automationId = z.number().int().positive().describe("Follow-up automation ID");
 
+// FollowUp status enum. `scheduled`/`sending` never existed — asking for them
+// matched nothing (auditoria Chatwoot 2026-09-27, FU-35).
 const followUpStatus = z
-  .enum(["pending", "scheduled", "sending", "sent", "failed", "cancelled"])
+  .enum(["pending", "sent", "failed", "cancelled"])
   .describe("Follow-up delivery status");
+
+// `scheduled_at` accepted by Conversations::FollowUpsController: ISO 8601 (a value
+// without offset is wall-clock time in the account timezone) or a Unix epoch in
+// seconds — the same number the API returns.
+const scheduledAt = z
+  .union([z.string(), z.number().int()])
+  .describe(
+    "When to send: ISO 8601 (no offset = account timezone) or Unix epoch in seconds. Must be in the future",
+  );
+
+// Fields of Conversations::FollowUpsController#follow_up_params. The controller
+// requires the `follow_up` envelope; anything outside this list was dropped.
+const followUpWritableFields = {
+  title: z.string().optional(),
+  inbox_id: z.number().int().positive().optional().describe("Inbox the follow-up is sent from"),
+  follow_up_template_id: templateId
+    .optional()
+    .describe("Follow-up template to send (text or multi-step cadence)"),
+  template_params: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      "Meta-approved WhatsApp template for a WhatsApp Cloud inbox: { name, language, namespace, processed_params }",
+    ),
+};
 
 // Fields of FollowUpTemplateItemsController#item_params (wrapper
 // `follow_up_template_item`). Shared by create and update.
@@ -149,9 +182,26 @@ export const register: RegisterFn = (server, client) => {
         conversation_id: conversationDisplayId.optional(),
         pipeline_card_id: z.number().int().positive().optional(),
         template_id: templateId.optional(),
-        scheduled_from: z.string().optional().describe("ISO8601 from"),
-        scheduled_to: z.string().optional().describe("ISO8601 to"),
-        ...pagination,
+        scheduled_from: z
+          .string()
+          .optional()
+          .describe(
+            "Window start (inclusive): ISO 8601 (no offset = account timezone) or epoch seconds",
+          ),
+        scheduled_to: z
+          .string()
+          .optional()
+          .describe(
+            "Window end (inclusive): ISO 8601 (no offset = account timezone) or epoch seconds",
+          ),
+        page: z.number().int().positive().optional().describe("Page (only with per_page)"),
+        per_page: z
+          .number()
+          .int()
+          .positive()
+          .max(100)
+          .optional()
+          .describe("Items per page (max 100). Omit to get the whole filtered list"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -172,7 +222,7 @@ export const register: RegisterFn = (server, client) => {
       inputSchema: {
         account_id: optionalAccountId,
         q: z.string().min(1).describe("Search query (matches follow-up title/content)"),
-        ...pagination,
+        page: z.number().int().positive().optional().describe("Page (15 results per page)"),
       },
       annotations: { readOnlyHint: true },
     },
@@ -188,7 +238,7 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get follow-up",
       description:
-        "Read a follow-up's full detail (rendered content, attachments, scheduled_at, last attempt).",
+        "Read one follow-up of a conversation: content, scheduled_at, status, owner, WhatsApp template name and, when it failed, error_message.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
@@ -210,39 +260,25 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create follow-up (schedule a message)",
       description:
-        "Schedule a personalized message to be sent later. Must be created under a conversation; pipeline_card_id may be linked through context.",
+        "Schedule a message to be sent later in a conversation. Give `content` or a `follow_up_template_id` (template variables are filled from the conversation at send time).",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
-        scheduled_at: z.string().describe("ISO8601 scheduled datetime"),
+        scheduled_at: scheduledAt,
         content: z
           .string()
           .optional()
-          .describe("Raw message content (required unless template_id is provided)"),
-        template_id: templateId.optional().describe("Use a template instead of raw content"),
-        template_variables: z
-          .record(z.string(), z.unknown())
-          .optional()
-          .describe("Variables to render the template (overrides automatic resolution)"),
-        pipeline_card_id: z
-          .number()
-          .int()
-          .positive()
-          .optional()
-          .describe("Optionally link the follow-up to a pipeline card"),
-        attachment_ids: z
-          .array(z.number().int().positive())
-          .optional()
-          .describe("Direct-upload IDs to attach"),
+          .describe("Message text (required unless follow_up_template_id is given)"),
+        ...followUpWritableFields,
       },
     },
     async ({ account_id, conversation_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(
-          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups`,
-          body,
-        );
+        // Controller does `params.require(:follow_up)` — wrap explicitly.
+        return client.post(`/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups`, {
+          follow_up: body,
+        });
       }),
   );
 
@@ -250,14 +286,15 @@ export const register: RegisterFn = (server, client) => {
     "update_followup",
     {
       title: "Update follow-up",
-      description: "Update scheduled_at, content, or template variables on a pending follow-up.",
+      description:
+        "Edit or reschedule a pending follow-up (other statuses answer 422). Send only the fields to change. Changing `content` of a WhatsApp-template follow-up without `template_params` turns it into a plain message.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
         followup_id: followUpId,
-        scheduled_at: z.string().optional(),
+        scheduled_at: scheduledAt.optional(),
         content: z.string().optional(),
-        template_variables: z.record(z.string(), z.unknown()).optional(),
+        ...followUpWritableFields,
       },
       annotations: { idempotentHint: true },
     },
@@ -266,7 +303,7 @@ export const register: RegisterFn = (server, client) => {
         const acc = resolveAccountId(account_id);
         return client.patch(
           `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}`,
-          body,
+          { follow_up: body },
         );
       }),
   );
@@ -275,7 +312,8 @@ export const register: RegisterFn = (server, client) => {
     "cancel_followup",
     {
       title: "Cancel follow-up",
-      description: "Cancel a pending or scheduled follow-up. Status becomes `cancelled`.",
+      description:
+        "Cancel a pending follow-up. Status becomes `cancelled` and it stays in the history.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
@@ -292,10 +330,33 @@ export const register: RegisterFn = (server, client) => {
   );
 
   server.registerTool(
+    "delete_followup",
+    {
+      title: "Delete follow-up",
+      description:
+        "Permanently delete a pending follow-up (it leaves the history; webhooks get follow_up_cancelled). Use cancel_followup to keep the record.",
+      inputSchema: {
+        account_id: accountId,
+        conversation_id: conversationDisplayId,
+        followup_id: followUpId,
+      },
+      annotations: { destructiveHint: true },
+    },
+    async ({ account_id, conversation_id, followup_id }) =>
+      safeHandler(() => {
+        const acc = resolveAccountId(account_id);
+        return client.delete(
+          `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/${followup_id}`,
+        );
+      }),
+  );
+
+  server.registerTool(
     "retry_send_followup",
     {
       title: "Retry sending a failed follow-up",
-      description: "Re-attempt delivery of a follow-up that previously failed.",
+      description:
+        "Re-send a failed follow-up in about a minute (a multi-step cadence resumes from the step that failed). At most 5 manual retries per follow-up.",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
@@ -316,20 +377,18 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Count follow-ups in a conversation",
       description:
-        "Lightweight count of follow-ups for a conversation (for badges). Scoped to the API token user unless they are an account admin (Chatwoot MT-02, 2026-05-30).",
+        "Lightweight count of all follow-ups of a conversation, any status (for badges). Scoped to the API token user unless they are an account admin (Chatwoot MT-02, 2026-05-30).",
       inputSchema: {
         account_id: optionalAccountId,
         conversation_id: conversationDisplayId,
-        status: followUpStatus.optional(),
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, conversation_id, ...params }) =>
+    async ({ account_id, conversation_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         return client.get(
           `/api/v1/accounts/${acc}/conversations/${conversation_id}/follow-ups/count`,
-          params,
         );
       }),
   );
@@ -339,17 +398,16 @@ export const register: RegisterFn = (server, client) => {
     "list_followup_templates",
     {
       title: "List follow-up templates",
-      description: "List reusable follow-up templates for the account.",
+      description: "List the account's active follow-up templates (not paginated).",
       inputSchema: {
         account_id: optionalAccountId,
-        ...pagination,
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, ...params }) =>
+    async ({ account_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/follow-up-templates`, params);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-templates`);
       }),
   );
 
@@ -373,20 +431,21 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Create follow-up template",
       description:
-        "Create a reusable follow-up template with optional placeholder variables (e.g., {{contact.name}}).",
+        "Create a reusable follow-up template. Variables use {{name}} placeholders — list them with list_followup_template_variables. File attachments need a multipart upload and are not supported here.",
       inputSchema: {
         account_id: optionalAccountId,
         name: z.string().min(1),
-        content: z.string().min(1).describe("Template body — supports liquid-style variables"),
-        description: z.string().optional(),
-        category: z.string().optional(),
-        attachment_ids: z.array(z.number().int().positive()).optional(),
+        content: z.string().min(1).describe("Template body with {{variable}} placeholders"),
+        active: z.boolean().optional().describe("Default true"),
       },
     },
     async ({ account_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id as number | undefined);
-        return client.post(`/api/v1/accounts/${acc}/follow-up-templates`, body);
+        // Controller does `params.require(:follow_up_template)` — wrap explicitly.
+        return client.post(`/api/v1/accounts/${acc}/follow-up-templates`, {
+          follow_up_template: body,
+        });
       }),
   );
 
@@ -394,21 +453,22 @@ export const register: RegisterFn = (server, client) => {
     "update_followup_template",
     {
       title: "Update follow-up template",
-      description: "Update template name, content, description or category.",
+      description: "Update a template's name, content or active flag.",
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,
         name: z.string().optional(),
         content: z.string().optional(),
-        description: z.string().optional(),
-        category: z.string().optional(),
+        active: z.boolean().optional(),
       },
       annotations: { idempotentHint: true },
     },
     async ({ account_id, template_id, ...body }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.patch(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}`, body);
+        return client.patch(`/api/v1/accounts/${acc}/follow-up-templates/${template_id}`, {
+          follow_up_template: body,
+        });
       }),
   );
 
@@ -453,20 +513,17 @@ export const register: RegisterFn = (server, client) => {
     "preview_followup_template",
     {
       title: "Preview follow-up template",
-      description: "Render a template against sample variables to preview the final message.",
+      description:
+        "Render a template to preview the final message. Without `context` the preview uses sample values.",
       inputSchema: {
         account_id: optionalAccountId,
         template_id: templateId,
-        variables: z
-          .record(z.string(), z.unknown())
+        context: z
+          .record(z.string(), z.string())
           .optional()
-          .describe("Variables to substitute during render"),
-        contact_id: z
-          .number()
-          .int()
-          .positive()
-          .optional()
-          .describe("Render against a real contact (auto-fills variables)"),
+          .describe(
+            "Values for the template variables, e.g. { contact_name: 'Ana' } (names from list_followup_template_variables)",
+          ),
       },
       annotations: { readOnlyHint: true },
     },
@@ -639,15 +696,13 @@ export const register: RegisterFn = (server, client) => {
         "List automations that trigger follow-ups based on conversation/pipeline events.",
       inputSchema: {
         account_id: optionalAccountId,
-        enabled: z.boolean().optional(),
-        ...pagination,
       },
       annotations: { readOnlyHint: true },
     },
-    async ({ account_id, ...params }) =>
+    async ({ account_id }) =>
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
-        return client.get(`/api/v1/accounts/${acc}/follow-up-automations`, params);
+        return client.get(`/api/v1/accounts/${acc}/follow-up-automations`);
       }),
   );
 
@@ -793,18 +848,24 @@ export const register: RegisterFn = (server, client) => {
     {
       title: "Get follow-ups report",
       description:
-        "Aggregated follow-up reports under v2 namespace. Pass `view` to switch between summary, by_user, by_template or export.",
+        "Aggregated follow-up reports (v2). `view`: index (everything + daily series), summary, by_user, by_template or export (JSON rows). The period filters scheduled_at and needs both `since` and `until` (max 400 days).",
       inputSchema: {
         account_id: optionalAccountId,
         view: z
           .enum(["index", "summary", "by_user", "by_template", "export"])
           .default("summary")
           .describe("Which report endpoint to call"),
-        from: z.string().optional().describe("ISO8601 from"),
-        to: z.string().optional().describe("ISO8601 to"),
-        user_id: z.number().int().positive().optional(),
+        since: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("Period start, Unix epoch seconds"),
+        until: z.number().int().nonnegative().optional().describe("Period end, Unix epoch seconds"),
+        status: followUpStatus.optional(),
+        source: z.enum(["manual", "template", "pipeline", "automation"]).optional(),
+        user_id: z.number().int().positive().optional().describe("Follow-up owner"),
         template_id: templateId.optional(),
-        ...pagination,
       },
       annotations: { readOnlyHint: true },
     },
@@ -812,7 +873,9 @@ export const register: RegisterFn = (server, client) => {
       safeHandler(() => {
         const acc = resolveAccountId(account_id);
         const base = `/api/v2/accounts/${acc}/reports/follow-ups`;
-        const path = view === "index" ? base : `${base}/${view}`;
+        // `export` answers CSV or JSON by format — ask for JSON explicitly.
+        const path =
+          view === "index" ? base : view === "export" ? `${base}/export.json` : `${base}/${view}`;
         return client.get(path, params);
       }),
   );

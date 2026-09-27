@@ -53,7 +53,7 @@ running server.
 | **Pipeline sales & analytics** | Product catalog, per-card sales ledger (record/void), revenue report, win rate, velocity, forecast, per-pipeline dashboard, lost reasons |
 | **Pipeline automations** | CRUD, execute, dry-run, validate, audit logs, templates |
 | **Pipeline activities / sequences / webhooks** | Activities, card cadences, outbound webhooks |
-| **Follow-Ups** | Schedule, cancel, templates, automations, reports |
+| **Follow-Ups** | Schedule, edit, cancel, delete, retry, templates, automations, reports |
 | **Atendimentos** | Appointments, services, professionals, availability, Google Calendar |
 | **Broadcasts** | Mass-send, blacklist, pause/resume |
 | **WhatsApp** | Hub (NooviConnect), Meta templates, WAHA, UAZAPI |
