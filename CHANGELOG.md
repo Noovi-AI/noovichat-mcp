@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`create_broadcast` / `update_broadcast` taught the wrong message key.** The
+  `message_payload` description showed `{ messages: [{ type: "text", text: "..." }] }`,
+  but the NooviChat API reads `content`. An agent following it created a broadcast
+  that sent an empty message to every contact. The description now shows
+  `content`. NooviChat also accepts the old `text` key from now on, so hosts still
+  on an older version of this package stop sending empty messages once the
+  instance is updated.
 - **Follow-up tools sent requests the NooviChat API ignored.** Found in the
   NooviChat follow-up audit of 2026-09-27:
   - `create_followup` / `update_followup` now send the `follow_up` envelope

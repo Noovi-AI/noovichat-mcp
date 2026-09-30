@@ -66,7 +66,7 @@ describe("broadcasts tools — whatsapp_group source (NC-33)", () => {
         },
       ],
       message_type: "custom",
-      message_payload: { messages: [{ type: "text", text: "Olá!" }] },
+      message_payload: { messages: [{ type: "text", content: "Olá!" }] },
     });
 
     expect(client.post).toHaveBeenCalledWith("/api/v1/accounts/7/broadcasts", {
@@ -81,8 +81,22 @@ describe("broadcasts tools — whatsapp_group source (NC-33)", () => {
           },
         ],
         message_type: "custom",
-        message_payload: { messages: [{ type: "text", text: "Olá!" }] },
+        message_payload: { messages: [{ type: "text", content: "Olá!" }] },
       },
     });
+  });
+});
+
+describe("broadcasts tools — message_payload description", () => {
+  // The API reads messages[].content; the description taught `text` and every
+  // broadcast created by following it went out as an empty message.
+  it.each(["create_broadcast", "update_broadcast"])("%s teaches the content key", (name) => {
+    const { server, tools } = makeStubServer();
+    register(server as never, makeMockClient() as unknown as NooviChatClient);
+
+    const schema = tools.get(name)?.config.inputSchema as Record<string, { description?: string }>;
+    const description = schema.message_payload.description ?? "";
+    expect(description).toContain('content: "Olá {{nome}}"');
+    expect(description).not.toContain('text: "Olá');
   });
 });

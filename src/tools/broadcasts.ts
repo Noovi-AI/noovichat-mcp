@@ -118,7 +118,8 @@ const broadcastCoreFields = {
     .optional()
     .describe(
       "Message payload. For message_type='custom' it MUST contain a `messages` " +
-        'array, e.g. { messages: [{ type: "text", text: "Olá {{nome}}" }] }. ' +
+        'array, e.g. { messages: [{ type: "text", content: "Olá {{nome}}" }] }. ' +
+        "The text goes in `content` (not `text`). " +
         "For 'template', pass the template name and parameters.",
     ),
   enable_spintax: z.boolean().optional(),
