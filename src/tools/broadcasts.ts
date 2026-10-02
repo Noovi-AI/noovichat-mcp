@@ -89,7 +89,15 @@ const broadcastCoreFields = {
   source_config: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe("Source-specific config (e.g. csv_rows, kanban filter, label name)"),
+    .describe(
+      "Source-specific config (csv_rows, tag_ids, or funnel_id + stage_ids for kanban) plus optional " +
+        "conversation keys: conversation_mode 'reuse' (send in the contact's latest conversation in the " +
+        "inbox — open or resolved — keeping the same conversation_id; a resolved one stays resolved until " +
+        "the customer replies) or 'new' (always a new conversation; default for csv, tags defaults to reuse); " +
+        "assignee_id (agent of the account, member of every inbox in inbox_ids) and team_id (account team; " +
+        "the agent must belong to it). New conversations are created assigned; an existing one only gets " +
+        "the agent when nobody (agent or bot) handles it. Invalid values return 422. Not used by whatsapp_group.",
+    ),
   broadcast_targets: z
     .array(broadcastTarget)
     .optional()

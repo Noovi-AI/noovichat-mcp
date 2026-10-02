@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-02
+
+### Added
+
+- **`create_broadcast` / `update_broadcast` document conversation routing.** The
+  `source_config` description now teaches `conversation_mode` (`reuse` sends in the
+  contact's existing conversation in the inbox, open or resolved, keeping the same
+  conversation id; `new` always opens one), `assignee_id` and `team_id` for
+  automatic assignment, and the correct kanban keys (`funnel_id` + `stage_ids`).
+
 ## [0.19.0] - 2026-09-27
 
 ### Fixed
